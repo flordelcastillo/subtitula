@@ -54,13 +54,13 @@
   <div class="scroll">
     <table>
       <thead><tr>
-        <th>Sala</th><th>Estado</th><th>Audio</th><th class="num">Latencia p50 / p90</th>
+        <th>Sala</th><th>Estado</th><th>Audio</th><th class="num">Original p50 / p90</th>
         <th class="num">Subtítulos</th><th class="num">Errores</th><th class="num">Público</th><th class="num">Costo</th><th>Glosario</th>
       </tr></thead>
       <tbody id="rows"></tbody>
     </table>
   </div>
-  <p class="sub">La latencia se mide desde que termina el tramo de audio hasta que el subtítulo está publicado. El costo sale de los tokens que informa el modelo, con los precios de <code>SUBTITULA_PRICE_*</code>.</p>
+  <p class="sub">La latencia se mide desde que termina el tramo de audio hasta que el original está publicado; la de traducción, hasta que llega la versión traducida. El costo sale de los tokens que informa el modelo, con los precios de <code>SUBTITULA_PRICE_*</code>.</p>
 </div>
 <div class="qr" id="qr" hidden><figure><img alt=""><figcaption></figcaption></figure></div>
 
@@ -78,7 +78,7 @@
 
   function row(s) {
     const silent = s.state === "live" && s.silent_for_s > 20;
-    const alert = s.state !== "live" && s.state !== "ended" || silent || (s.latency_p90_ms || 0) > 6000 || (s.dropped || 0) > 0;
+    const alert = s.state !== "live" && s.state !== "ended" || silent || (s.latency_p90_ms || 0) > 6000 || (s.dropped || 0) > 0 || (s.translations_pending || 0) > 8;
     const level = s.level_dbfs == null ? 0 : Math.max(0, Math.min(100, (s.level_dbfs + 60) * 100 / 60));
     const id = encodeURIComponent(s.id);
     const links = [
@@ -93,7 +93,9 @@
       <td><span class="state"><span class="dot ${dotFor(s.state)}"></span>${STATE[s.state] || esc(s.state)}</span><div class="sub">${s.engine ? `motor ${esc(s.engine)}` : ""}</div></td>
       <td>${s.level_dbfs != null ? `${s.level_dbfs} dBFS` : "–"}<div class="meter"><i style="width:${level}%"></i></div>
         ${silent ? `<div class="bad">${Math.round(s.silent_for_s)} s sin audio</div>` : ""}</td>
-      <td class="num">${ms(s.latency_p50_ms)} / ${ms(s.latency_p90_ms)}</td>
+      <td class="num">${ms(s.latency_p50_ms)} / ${ms(s.latency_p90_ms)}
+        ${s.translation_p50_ms != null ? `<div class="sub">traducción ${ms(s.translation_p50_ms)} / ${ms(s.translation_p90_ms)}</div>` : ""}
+        ${s.translations_pending ? `<div class="sub">${s.translations_pending} en cola</div>` : ""}</td>
       <td class="num">${s.captions ?? 0}<div class="sub">${s.audio_s ? `${Math.round(s.audio_s / 60)} min de audio` : ""}</div></td>
       <td class="num">${(s.errors || 0) + (s.dropped || 0)}${s.dropped ? `<div class="sub">${s.dropped} tramos salteados</div>` : ""}${s.last_error ? `<div class="err" title="${esc(s.last_error)}">${esc(s.last_error.slice(0, 90))}</div>` : ""}</td>
       <td class="num">${s.viewers ?? 0}</td>

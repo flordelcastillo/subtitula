@@ -18,6 +18,21 @@ from pathlib import Path
 from .config import SessionConfig, load_config
 
 
+def load_dotenv(path: str | Path = ".env") -> None:
+    """Carga KEY=valor de .env sin pisar variables ya definidas en el entorno."""
+    path = Path(path)
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.removeprefix("export ").partition("=")
+        value = value.strip().strip('"').strip("'")
+        if key.strip() and value:
+            os.environ.setdefault(key.strip(), value)
+
+
 def _common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--config", default=os.environ.get("SUBTITULA_CONFIG", "config/sessions.yaml"))
     p.add_argument("--glossary", default=os.environ.get("SUBTITULA_GLOSSARY", "config/glossary.yaml"))
@@ -64,23 +79,33 @@ async def _file(args) -> None:
     session = SessionConfig(id=path.stem, name=args.name or path.stem, source=str(path),
                             language=args.language, realtime=args.realtime)
     languages = args.languages.split(",") if args.languages else cfg.languages
-    caps: list[Caption] = []
     show = args.show
 
     class Printer:
-        async def caption(self, cap: Caption) -> None:
-            caps.append(cap)
-            line = cap.in_lang(show)
-            print(f"\033[2m{cap.start:7.1f}s {cap.lang} {cap.latency_ms:5d}ms\033[0m  {line}", flush=True)
-            if show == "original" and args.both:
+        """Imprime cada línea al publicarse; una traducción que llega después se imprime debajo."""
+
+        def __init__(self):
+            self.by_seq: dict[int, Caption] = {}
+
+        async def caption(self, cap: Caption) -> int:
+            update = cap.seq in self.by_seq
+            self.by_seq[cap.seq] = Caption.from_dict(cap.to_dict())
+            if not update:
+                line = cap.in_lang(show)
+                print(f"\033[2m{cap.start:7.1f}s {cap.lang:3} {cap.latency_ms:5d}ms\033[0m  {line}", flush=True)
+            if (update or not cap.pending) and args.both:
                 for lang, text in cap.tr.items():
-                    print(f"{'':22}\033[33m{lang}\033[0m  {text}", flush=True)
+                    delay = f"{cap.tr_latency_ms:5d}ms" if cap.tr_latency_ms else ""
+                    print(f"\033[2m{'':8}{lang:3} {delay:>7}\033[0m  \033[33m{text}\033[0m", flush=True)
+            return cap.seq
 
         async def status(self, session: str, status: dict) -> None:
             return None
 
+    printer = Printer()
     engine = create_engine(args.engine or cfg.engine)
-    await SessionWorker(session, engine, Printer(), languages, cfg.glossary).run()
+    await SessionWorker(session, engine, printer, languages, cfg.glossary).run()
+    caps = [printer.by_seq[k] for k in sorted(printer.by_seq)]
     await engine.close()
     out = Path(args.out or path.parent)
     out.mkdir(parents=True, exist_ok=True)
@@ -91,6 +116,7 @@ async def _file(args) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    load_dotenv()
     parser = argparse.ArgumentParser(prog="subtitula", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)

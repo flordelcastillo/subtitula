@@ -114,6 +114,14 @@
 
     // Subtítulos
     const textOf = (c) => (lang === "original" || lang === c.lang ? c.text : (c.tr?.[lang] || c.text));
+    // Mientras la traducción no llega se muestra el original atenuado, para no dejar el hueco.
+    const waiting = (c) => lang !== "original" && lang !== c.lang && !c.tr?.[lang] && c.pending;
+    function paint(node, c) {
+      const last = node.classList.contains("last"), recent = node.classList.contains("recent");
+      node.className = "cap" + (waiting(c) ? " pending" : "") + (last ? " last" : "") + (recent ? " recent" : "");
+      node.lang = lang === "original" || waiting(c) ? c.lang : lang;
+      node.innerHTML = lineHtml(c);
+    }
     const lineHtml = (c) => {
       const main = textOf(c);
       const showSrc = dual && lang !== "original" && c.lang !== lang && main !== c.text;
@@ -130,20 +138,27 @@
       });
     }
     function redraw() {
-      main.innerHTML = caps.length ? caps.map((c) => `<p class="cap" lang="${lang === "original" ? esc(c.lang) : esc(lang)}">${lineHtml(c)}</p>`).join("")
-        : main.innerHTML;
+      if (caps.length) {
+        main.replaceChildren(...caps.map((c) => { const p = document.createElement("p"); paint(p, c); return p; }));
+      }
       mark();
       scrollToEnd();
     }
     function add(c) {
-      if (caps.length && c.seq <= caps[caps.length - 1].seq) return;
+      // Una traducción que llega después reemplaza la línea que ya estaba en pantalla.
+      const idx = caps.findIndex((x) => x.seq === c.seq);
+      if (idx >= 0) {
+        caps[idx] = c;
+        const node = main.querySelectorAll(".cap")[idx];
+        if (node) paint(node, c);
+        return;
+      }
+      if (caps.length && c.seq < caps[caps.length - 1].seq) return;
       const stick = following();
       caps.push(c);
       main.querySelector(".waiting")?.remove();
       const p = document.createElement("p");
-      p.className = "cap";
-      p.lang = lang === "original" ? c.lang : lang;
-      p.innerHTML = lineHtml(c);
+      paint(p, c);
       main.append(p);
       // Con charlas de una hora el DOM no necesita guardar todo: la descarga tiene el texto completo.
       if (caps.length > 400) { caps.shift(); main.querySelector(".cap")?.remove(); }

@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 
 
 class Publisher(Protocol):
-    async def caption(self, caption: Caption) -> None: ...
+    async def caption(self, caption: Caption) -> int | None: ...
     async def status(self, session: str, status: dict) -> dict | None: ...
 
 
@@ -34,7 +34,7 @@ class HttpPublisher:
         headers = {"Authorization": f"Bearer {token}"} if token else {}
         self.http = httpx.AsyncClient(timeout=5, headers=headers)
 
-    async def _post(self, session: str, payload: dict) -> dict | None:
+    async def _post(self, session: str, payload: dict) -> dict | None:  # noqa: C901
         for attempt in range(3):
             try:
                 resp = await self.http.post(f"{self.hub_url}/api/ingest/{session}", json=payload)
@@ -46,8 +46,9 @@ class HttpPublisher:
                 await asyncio.sleep(0.3 * (attempt + 1))
         return None
 
-    async def caption(self, caption: Caption) -> None:
-        await self._post(caption.session, {"type": "caption", "caption": caption.to_dict()})
+    async def caption(self, caption: Caption) -> int | None:
+        reply = await self._post(caption.session, {"type": "caption", "caption": caption.to_dict()})
+        return reply.get("seq") if reply else None
 
     async def status(self, session: str, status: dict) -> dict | None:
         return await self._post(session, {"type": "status", "status": status})
@@ -56,6 +57,7 @@ class HttpPublisher:
 class SessionWorker:
     MAX_INFLIGHT = 3
     MAX_BACKLOG = 8
+    MAX_TRANSLATIONS = 4
 
     def __init__(self, session: SessionConfig, engine: Engine, publisher: Publisher,
                  languages: list[str], glossary: list[str],
@@ -73,6 +75,10 @@ class SessionWorker:
         self.seq = 0
         self.previous: deque[str] = deque(maxlen=3)
         self.latencies: deque[int] = deque(maxlen=60)
+        self.tr_latencies: deque[int] = deque(maxlen=60)
+        self.tr_pending = 0
+        self._tr_sem = asyncio.Semaphore(self.MAX_TRANSLATIONS)
+        self._tr_tasks: set[asyncio.Task] = set()
         self.state = "idle"
         self.last_error = ""
         self.errors = 0
@@ -138,6 +144,8 @@ class SessionWorker:
         finally:
             await self._pending.put(None)
             await emitter
+            if self._tr_tasks:
+                await asyncio.gather(*self._tr_tasks, return_exceptions=True)
             heartbeat.cancel()
             if self.state not in ("ended",):
                 self.state = "stopped"
@@ -173,10 +181,25 @@ class SessionWorker:
                              glossary=self.glossary, speaker=s.speaker, topic=s.topic,
                              previous=list(self.previous))
 
+    async def _retrying(self, call, what: str):
+        """En vivo, un fallo se saltea. Leyendo un archivo, se espera y se reintenta (cuota, saturación)."""
+        attempts = 8 if self.backpressure else 1
+        for attempt in range(attempts):
+            try:
+                return await call()
+            except Exception as exc:  # noqa: BLE001
+                if attempt == attempts - 1:
+                    raise
+                wait = min(10 * (attempt + 1), 45)
+                log.warning("[%s] %s falló (%s); reintento en %ds", self.session.id, what, type(exc).__name__, wait)
+                await asyncio.sleep(wait)
+
     async def _process(self, seg: Segment, ready_at: float):
         async with self._sem:
             try:
-                return seg, ready_at, await self.engine.process(seg, self._context())
+                result = await self._retrying(lambda: self.engine.process(seg, self._context()),
+                                              f"el tramo {seg.start:.1f}-{seg.end:.1f}")
+                return seg, ready_at, result
             except Exception as exc:  # noqa: BLE001
                 self.errors += 1
                 self.last_error = f"{type(exc).__name__}: {str(exc)[:250]}"
@@ -196,12 +219,42 @@ class SessionWorker:
             self.latencies.append(latency)
             self.seq += 1
             self.captions += 1
+            context = self._context()
             self.previous.append(result.text)
             self.input_tokens += result.input_tokens
             self.output_tokens += result.output_tokens
+            translate = self.engine.two_stage and any(lang != result.lang for lang in self.languages)
             cap = Caption(session=self.session.id, seq=self.seq, start=round(seg.start, 2),
                           end=round(seg.end, 2), lang=result.lang, text=result.text, tr=result.tr,
-                          latency_ms=latency, created_at=now)
+                          latency_ms=latency, created_at=now, pending=translate)
+            assigned = await self.publisher.caption(cap)
+            if assigned:
+                cap.seq = assigned
+            if translate:
+                task = asyncio.create_task(self._translate(cap, ready_at, context))
+                self._tr_tasks.add(task)
+                task.add_done_callback(self._tr_tasks.discard)
+
+    async def _translate(self, cap: Caption, ready_at: float, ctx: EngineContext) -> None:
+        self.tr_pending += 1
+        try:
+            async with self._tr_sem:
+                result = await self._retrying(lambda: self.engine.translate(cap.text, cap.lang, ctx),
+                                              f"la traducción del #{cap.seq}")
+            cap.lang = result.lang if result.lang != "und" else cap.lang
+            cap.tr = result.tr
+            cap.tr_latency_ms = int((time.time() - ready_at) * 1000)
+            self.tr_latencies.append(cap.tr_latency_ms)
+            self.input_tokens += result.input_tokens
+            self.output_tokens += result.output_tokens
+        except Exception as exc:  # noqa: BLE001
+            self.errors += 1
+            self.last_error = f"traducción: {type(exc).__name__}: {str(exc)[:230]}"
+            log.warning("[%s] no se pudo traducir el #%d: %s", self.session.id, cap.seq, exc)
+        finally:
+            self.tr_pending -= 1
+            # Se publica aunque falle: así la vista deja de esperar y muestra el original.
+            cap.pending = False
             await self.publisher.caption(cap)
 
     # -- estado --------------------------------------------------------------------------------
@@ -224,6 +277,9 @@ class SessionWorker:
             "inflight": self._pending.qsize(),
             "latency_p50_ms": lat[len(lat) // 2] if lat else None,
             "latency_p90_ms": lat[int(len(lat) * 0.9)] if lat else None,
+            "translation_p50_ms": sorted(self.tr_latencies)[len(self.tr_latencies) // 2] if self.tr_latencies else None,
+            "translation_p90_ms": sorted(self.tr_latencies)[int(len(self.tr_latencies) * 0.9)] if self.tr_latencies else None,
+            "translations_pending": self.tr_pending,
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
             "updated_at": time.time(),

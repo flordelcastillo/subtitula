@@ -17,6 +17,8 @@ class Caption:
     tr: dict[str, str] = field(default_factory=dict)  # traducciones por código de idioma
     latency_ms: int = 0  # desde que terminó el audio del tramo hasta que se publicó
     created_at: float = 0.0
+    pending: bool = False  # la traducción todavía no llegó (motor en dos etapas)
+    tr_latency_ms: int = 0  # desde que terminó el audio hasta que llegó la traducción
 
     def in_lang(self, lang: str) -> str:
         if lang in ("", "original", self.lang):

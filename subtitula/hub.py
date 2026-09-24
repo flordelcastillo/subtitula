@@ -49,14 +49,16 @@ class Hub:
 
     def _load(self, sid: str) -> None:
         path = self._path(sid)
-        caps = []
+        by_seq: dict[int, Caption] = {}
         if path.exists():
             for line in path.read_text(encoding="utf-8").splitlines():
                 try:
-                    caps.append(Caption.from_dict(json.loads(line)))
+                    cap = Caption.from_dict(json.loads(line))
                 except (json.JSONDecodeError, TypeError):
                     continue
-        self.captions[sid] = caps
+                # Una actualización (traducción que llegó después) reemplaza a la versión anterior.
+                by_seq[cap.seq] = cap
+        self.captions[sid] = [by_seq[k] for k in sorted(by_seq)]
 
     def ensure(self, sid: str) -> None:
         if sid not in self.meta:
@@ -67,13 +69,18 @@ class Hub:
 
     # -- publicación ---------------------------------------------------------------------------
 
-    async def caption(self, cap: Caption) -> None:
+    async def caption(self, cap: Caption) -> int:
+        """Publica un subtítulo nuevo o actualiza uno existente. Devuelve el número asignado."""
         self.ensure(cap.session)
         caps = self.captions[cap.session]
-        # Si el worker se reinició, la numeración sigue desde el último subtítulo guardado.
-        if caps and cap.seq <= caps[-1].seq:
-            cap.seq = caps[-1].seq + 1
-        caps.append(cap)
+        existing = self._find(caps, cap.seq)
+        if existing is not None and caps[existing].created_at == cap.created_at:
+            caps[existing] = cap
+        else:
+            # Si el worker se reinició, la numeración sigue desde el último subtítulo guardado.
+            if caps and cap.seq <= caps[-1].seq:
+                cap.seq = caps[-1].seq + 1
+            caps.append(cap)
         with self._path(cap.session).open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(cap.to_dict(), ensure_ascii=False) + "\n")
         payload = cap.to_dict()
@@ -83,6 +90,15 @@ class Hub:
             except asyncio.QueueFull:
                 # Un cliente que no lee (pestaña dormida) no frena a los demás.
                 self.subscribers[cap.session].discard(queue)
+        return cap.seq
+
+    @staticmethod
+    def _find(caps: list[Caption], seq: int) -> int | None:
+        # Las actualizaciones llegan pocos segundos después: se busca desde el final.
+        for i in range(len(caps) - 1, max(-1, len(caps) - 200), -1):
+            if caps[i].seq == seq:
+                return i
+        return None
 
     async def status_update(self, sid: str, status: dict) -> dict:
         self.ensure(sid)
@@ -124,8 +140,8 @@ class LocalPublisher:
     def __init__(self, hub: Hub):
         self.hub = hub
 
-    async def caption(self, caption: Caption) -> None:
-        await self.hub.caption(caption)
+    async def caption(self, caption: Caption) -> int:
+        return await self.hub.caption(caption)
 
     async def status(self, session: str, status: dict) -> dict:
         return await self.hub.status_update(session, status)
@@ -289,8 +305,7 @@ def create_app(config: AppConfig, token: str = "", run_workers: bool = False) ->
         hub.check_token((authorization or "").removeprefix("Bearer ").strip() or None)
         body = await request.json()
         if body.get("type") == "caption":
-            await hub.caption(Caption.from_dict(body["caption"]))
-            return {"ok": True}
+            return {"ok": True, "seq": await hub.caption(Caption.from_dict(body["caption"]))}
         if body.get("type") == "status":
             return await hub.status_update(sid, body.get("status", {}))
         raise HTTPException(400, "type: caption o status")

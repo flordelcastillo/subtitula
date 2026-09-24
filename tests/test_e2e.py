@@ -122,3 +122,42 @@ def test_sse_stream_replays_backlog_and_goes_live(tmp_path, talk_wav):
     finally:
         server.should_exit = True
         thread.join(timeout=10)
+
+
+def test_two_stage_publishes_original_then_translation(tmp_path, talk_wav, monkeypatch):
+    """Motor en dos etapas: el original sale primero y la traducción actualiza la misma línea."""
+    monkeypatch.setenv("SUBTITULA_FAKE_TWO_STAGE", "1")
+    app = make_app(tmp_path, talk_wav)
+    hub = app.state.hub
+    seen: list[dict] = []
+    original = hub.caption
+
+    async def spy(cap):
+        seen.append(cap.to_dict())
+        return await original(cap)
+
+    hub.caption = spy
+    with TestClient(app) as client:
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            caps = client.get("/api/sessions/sala-1/captions").json()["captions"]
+            if len(caps) >= 4 and not any(c["pending"] for c in caps):
+                break
+            time.sleep(0.1)
+        first = [c for c in seen if c["session"] == "sala-1" and c["seq"] == 1]
+        assert first[0]["pending"] is True and first[0]["tr"] == {}
+        assert first[-1]["pending"] is False and first[-1]["tr"]["es"].startswith("[es]")
+        assert first[-1]["lang"] == "en" and first[-1]["tr_latency_ms"] >= first[-1]["latency_ms"]
+        # Sin duplicados: cada número aparece una sola vez, ya traducido.
+        seqs = [c["seq"] for c in caps]
+        assert seqs == sorted(set(seqs))
+        assert all(c["tr"].get("pt") for c in caps)
+        status = next(r for r in client.get("/api/status").json()["sessions"] if r["id"] == "sala-1")
+        assert status["translation_p50_ms"] is not None
+
+    # Al reiniciar, el archivo se relee quedándose con la última versión de cada línea.
+    from subtitula.hub import Hub
+    reloaded = Hub(app.state.hub.config)
+    caps = reloaded.captions["sala-1"]
+    assert [c.seq for c in caps] == sorted({c.seq for c in caps})
+    assert all(not c.pending for c in caps)

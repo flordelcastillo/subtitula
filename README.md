@@ -6,7 +6,7 @@ Cada escenario manda su audio (stream, micrófono, encoder o una pestaña del na
 
 Hecho para la [Vibeathon de Nerdearla 2026](https://nerdearla.devpost.com). Licencia Apache 2.0.
 
-> **English summary.** Subtitula is an open source live captioning and interpretation system for multi-track conferences. Each stage runs an independent worker: ffmpeg ingests any audio source, a pause-aware segmenter cuts 1–5 s chunks, and a single Gemini call per chunk returns the verbatim transcript plus translations (es/en/pt), guided by a live-editable glossary. A lightweight hub fans captions out over Server-Sent Events to phones (pick stage + language), an OBS/vMix overlay, and a production dashboard (audio level, latency p50/p90, errors, measured cost per hour). Transcripts export to SRT/VTT/TXT. Runs as a single process for a small event or as a hub plus one container per stage to scale to dozens of rooms. A fully local mode uses faster-whisper plus Gemma via Ollama.
+> **English summary.** Subtitula is an open source live captioning and interpretation system for multi-track conferences. Each stage runs an independent worker: ffmpeg ingests any audio source, a pause-aware segmenter cuts 1–5 s chunks, `gemini-3.5-transcribe` returns the original caption in ~2–3 s (the glossary biases recognition), and a text model pool (Gemini Flash-Lite with Gemma as fallback) then updates each caption in place with es/en/pt translations. A lightweight hub fans captions out over Server-Sent Events to phones (pick stage + language), an OBS/vMix overlay, and a production dashboard (audio level, latency p50/p90, errors, measured cost per hour). Transcripts export to SRT/VTT/TXT. Runs as a single process for a small event or as a hub plus one container per stage to scale to dozens of rooms. A fully local mode uses faster-whisper plus Gemma via Ollama.
 
 ## Qué resuelve
 
@@ -21,15 +21,18 @@ Hecho para la [Vibeathon de Nerdearla 2026](https://nerdearla.devpost.com). Lice
 
 ## Probarlo en 2 minutos
 
-Requisitos: Python 3.11 o superior, `ffmpeg` y una clave de Gemini gratis de [Google AI Studio](https://aistudio.google.com/apikey).
+Requisitos: Python 3.11 o superior, `ffmpeg` y una clave de Gemini de [Google AI Studio](https://aistudio.google.com/apikey).
 
 ```bash
 git clone https://github.com/flordelcastillo/subtitula && cd subtitula
 python -m venv venv && . venv/bin/activate
 pip install -e .
-export GEMINI_API_KEY=tu-clave
+echo GEMINI_API_KEY=tu-clave > .env
+python scripts/check_gemini.py   # prueba la clave y mide la latencia de cada modelo
 subtitula serve
 ```
+
+> **Sobre la clave gratuita.** Alcanza para probar y para subtitular archivos (`subtitula file` espera y reintenta cuando se acaba la cuota), pero no para un vivo: el plan gratuito permite unos pocos pedidos por minuto por modelo, y una sala en vivo hace entre 15 y 20. Para el evento hay que activar la facturación del proyecto en AI Studio (Tier 1), que sube esos límites.
 
 Abrí <http://localhost:8000>. Hay dos salas de ejemplo, en loop, con fragmentos reales de Nerdearla 2025: una charla en inglés ([Thor Schaeff, *Building Multilingual Conversational AI Agents*](https://www.youtube.com/watch?v=GkVjMxYi5gA)) y otra en español ([Miguel Ángel Durán, *Programming is dead. Long live programming!*](https://www.youtube.com/watch?v=zynI57qVj-U)).
 
@@ -62,13 +65,14 @@ Muestra los subtítulos a medida que salen y deja `.srt`, `.vtt` y `.txt` por id
 
 **Segmentador** (`subtitula/segmenter.py`). Mide la energía en frames de 30 ms contra un piso de ruido que se adapta a la sala. Cierra un tramo cuando el orador hace una pausa de 300 ms después de al menos 1,2 s de habla. Si nadie hace pausa, corta a los 5 s en el frame más silencioso del último segundo y medio, así nunca parte una palabra. Los tramos sin voz (aplausos, silencio, música) no se mandan al modelo y no cuestan nada.
 
-**Motor Gemini** (`subtitula/engines/gemini.py`). Una sola llamada por tramo, con salida JSON estructurada, devuelve el idioma detectado, la transcripción literal y la traducción a cada idioma del evento. Eso rinde la mitad de latencia que transcribir y después traducir. Además, la traducción escucha el audio y no sólo el texto. El prompt lleva:
+**Motor Gemini** (`subtitula/engines/gemini.py`). Trabaja en dos etapas:
 
-- el título, la persona que habla y el tema de la charla (de `sessions.yaml`);
-- el glosario global más el de la sala, para que *Nerdearla*, *kubectl* o el nombre de quien habla salgan bien escritos;
-- los últimos tres tramos, para resolver frases cortadas y pronombres sin repetirlos.
+1. **Original.** `gemini-3.5-transcribe`, el modelo de Gemini dedicado a transcripción, pasa el tramo a texto en unos 2 a 3 segundos. El glosario de la sala entra como `custom_vocabulary` del reconocedor, así que *Nerdearla*, *kubectl* o el nombre de quien habla se reconocen bien desde el audio. El modo `SMART` saca muletillas y repeticiones. El original se publica apenas vuelve.
+2. **Traducción.** Un modelo de texto traduce ese tramo a los idiomas del evento, con el título de la charla, el glosario y los tramos anteriores como contexto. Cuando termina, la línea que el público ya estaba leyendo se actualiza en su lugar. Mientras tanto se muestra el original atenuado, así nunca queda un hueco. El overlay del stream, en cambio, espera la traducción.
 
-Se procesan hasta 3 tramos en paralelo y se publican siempre en orden. Si el modelo no da abasto, el worker saltea un tramo antes que acumular atraso (y lo muestra en el panel). En un vivo, llegar tarde es peor que perder una frase.
+Cada etapa usa un pool de modelos (por defecto `gemini-flash-lite-latest`, `gemini-3.1-flash-lite` y `gemma-4-26b-a4b-it` para traducir). Si un modelo responde 429 (sin cuota) o 503 (saturado), queda en espera y el pedido pasa al siguiente. Con `SUBTITULA_GEMINI_MODE=single` se usa una sola llamada de audio a JSON con transcripción y traducciones.
+
+Se procesan hasta 3 tramos en paralelo y se publican siempre en orden. Si el modelo no da abasto, el worker saltea un tramo antes que acumular atraso (y lo muestra en el panel). En un vivo, llegar tarde es peor que perder una frase. Leyendo un archivo, en cambio, espera y reintenta.
 
 **Hub** (`subtitula/hub.py`). Sólo mueve texto. Guarda cada subtítulo en `data/<sala>.jsonl` y lo reparte por Server-Sent Events. Quien entra tarde recibe las últimas 40 líneas; quien pierde la conexión reconecta con `Last-Event-ID` y recibe sólo lo que le faltó.
 
@@ -118,7 +122,9 @@ Variables de entorno:
 | Variable | Para qué |
 |---|---|
 | `GEMINI_API_KEY` | Clave de Gemini |
-| `SUBTITULA_GEMINI_MODEL` | Modelo (por defecto `gemini-flash-lite-latest`) |
+| `SUBTITULA_ASR_MODEL` | Modelo(s) de transcripción, separados por coma (por defecto `gemini-3.5-transcribe`) |
+| `SUBTITULA_GEMINI_MODEL` | Modelos de traducción, separados por coma, en orden de preferencia |
+| `SUBTITULA_GEMINI_MODE` | `asr` (dos etapas, por defecto) o `single` (una llamada de audio a JSON) |
 | `SUBTITULA_TOKEN` | Protege la ingesta de workers, el envío de audio y el glosario |
 | `SUBTITULA_PUBLIC_URL` | URL pública que se codifica en los QR |
 | `SUBTITULA_PRICE_INPUT_PER_M`, `SUBTITULA_PRICE_OUTPUT_PER_M` | Precio por millón de tokens, para el costo del panel |
@@ -168,7 +174,7 @@ pip install -e '.[dev]'
 pytest
 ```
 
-Los tests cubren el segmentador con audio sintético, las exportaciones, dos salas en paralelo de punta a punta, la reconexión SSE con `Last-Event-ID`, el token de ingesta y la actualización del glosario en vivo.
+Los tests cubren el segmentador con audio sintético, las exportaciones, dos salas en paralelo de punta a punta, el motor en dos etapas (original primero, traducción que actualiza la misma línea), la reconexión SSE con `Last-Event-ID`, el token de ingesta y la actualización del glosario en vivo.
 
 ## Licencia
 
