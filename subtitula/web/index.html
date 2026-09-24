@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#121a30">
+<title>Subtítulos en vivo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/web/style.css">
+<style>
+  body { display: flex; flex-direction: column; min-height: 100dvh; }
+
+  /* Selector de sala */
+  .pick { max-width: 44rem; margin: 0 auto; padding: 3rem 1rem 4rem; width: 100%; }
+  .pick h1 { font-size: clamp(2rem, 7vw, 3.2rem); line-height: 1.05; margin: 0 0 .6rem; letter-spacing: -.01em; }
+  .pick p.lead { color: var(--muted); margin: 0 0 2rem; max-width: 34rem; }
+  .rooms { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  .rooms a { display: grid; grid-template-columns: auto 1fr; gap: .2rem 1rem; padding: 1.1rem .25rem; text-decoration: none; border-bottom: 1px solid var(--line); }
+  .rooms a:hover .room-name { text-decoration: underline; text-underline-offset: 4px; }
+  .rooms .dot { margin-top: .55rem; }
+  .room-name { font-size: 1.25rem; font-weight: 700; line-height: 1.3; }
+  .room-meta { grid-column: 2; color: var(--muted); font-size: .95rem; }
+  .empty { color: var(--muted); padding: 1.5rem 0; }
+
+  /* Vista de subtítulos */
+  header.bar { position: sticky; top: 0; z-index: 2; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line); padding: .6rem 1rem; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
+  .title { display: flex; align-items: center; gap: .6rem; min-width: 0; flex: 1 1 14rem; }
+  @media (max-width: 40rem) { .foot .status span:last-child { display: none; } }
+  .title a { text-decoration: none; color: var(--muted); font-size: .95rem; }
+  .title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .langs { display: flex; gap: .35rem; overflow-x: auto; scrollbar-width: none; max-width: 100%; padding: 2px; }
+  .langs::-webkit-scrollbar { display: none; }
+  .tools { display: flex; gap: .35rem; align-items: center; }
+
+  main.captions { flex: 1; width: 100%; max-width: 52rem; margin: 0 auto; padding: 1.5rem 1rem 7rem;
+    display: flex; flex-direction: column; justify-content: flex-end; }
+  .cap { font-size: var(--cap-size); line-height: 1.32; margin: 0 0 .55em; opacity: .5; transition: opacity .4s ease;
+    overflow-wrap: anywhere; }
+  .cap.recent { opacity: .78; }
+  .cap.last { opacity: 1; border-left: 4px solid var(--stage); padding-left: .6em; margin-left: calc(-.6em - 4px); }
+  .cap .src { display: block; font-size: .5em; color: var(--muted); margin-top: .15em; }
+  .waiting { color: var(--muted); font-size: 1.25rem; max-width: 30rem; }
+
+  .foot { position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; align-items: center; gap: .5rem;
+    padding: .6rem 1rem calc(.6rem + env(safe-area-inset-bottom)); background: linear-gradient(transparent, var(--bg) 40%); pointer-events: none; }
+  .foot > * { pointer-events: auto; }
+  .status { display: flex; align-items: center; gap: .5rem; color: var(--muted); font-size: .9rem; }
+  #jump[hidden] { display: none; }
+  details.dl { position: relative; }
+  details.dl summary { list-style: none; }
+  details.dl summary::-webkit-details-marker { display: none; }
+  details.dl .menu { position: absolute; right: 0; bottom: 2.6rem; background: var(--surface); border: 1px solid var(--line); border-radius: .75rem;
+    padding: .4rem; display: grid; min-width: 13rem; }
+  details.dl .menu a { padding: .45rem .7rem; border-radius: .5rem; text-decoration: none; }
+  details.dl .menu a:hover { background: var(--bg); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<template id="t-pick">
+  <section class="pick">
+    <h1>Elegí la sala</h1>
+    <p class="lead">Subtítulos en vivo de cada charla, en el idioma original o traducidos. Funciona en el celular, sin instalar nada.</p>
+    <ul class="rooms" aria-label="Salas"></ul>
+  </section>
+</template>
+
+<template id="t-view">
+  <header class="bar">
+    <div class="title"><a href="/" aria-label="Volver a las salas">Salas</a><strong class="name"></strong></div>
+    <div class="langs" role="group" aria-label="Idioma de los subtítulos"></div>
+  </header>
+  <main class="captions" aria-live="polite" aria-relevant="additions">
+    <p class="waiting">Esperando que arranque la charla. Los subtítulos aparecen acá apenas alguien habla.</p>
+  </main>
+  <footer class="foot">
+    <div class="status"><span class="dot" id="conn"></span><span id="conn-text">Conectando</span></div>
+    <button class="btn primary" id="jump" hidden>Volver al vivo</button>
+    <div class="tools">
+      <button class="btn" data-size="-1" aria-label="Achicar el texto">A−</button>
+      <button class="btn" data-size="1" aria-label="Agrandar el texto">A+</button>
+      <button class="btn" id="theme" aria-label="Cambiar entre tema oscuro y claro">Claro</button>
+      <details class="dl">
+      <summary class="btn">Descargar</summary>
+      <div class="menu"></div>
+      </details>
+    </div>
+  </footer>
+</template>
+
+<script src="/web/viewer.js"></script>
+</body>
+</html>

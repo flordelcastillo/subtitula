@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel de producción</title>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/web/style.css">
+<style>
+  body { padding: 1.5rem 1rem 4rem; }
+  .wrap { max-width: 88rem; margin: 0 auto; }
+  h1 { font-size: 1.8rem; margin: 0; }
+  .top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
+  .summary { display: flex; flex-wrap: wrap; gap: 1.75rem; color: var(--muted); }
+  .summary b { color: var(--fg); font-size: 1.35rem; margin-right: .3rem; }
+  .scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: .75rem; }
+  table { border-collapse: collapse; width: 100%; min-width: 64rem; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: .7rem .8rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 400; color: var(--muted); font-size: .9rem; background: var(--surface); }
+  td.num, th.num { text-align: right; }
+  tr.alert td:first-child { box-shadow: inset 4px 0 0 var(--bad); }
+  tr:last-child td { border-bottom: 0; }
+  .name { font-weight: 700; }
+  .sub { color: var(--muted); font-size: .88rem; }
+  .links { display: flex; flex-wrap: wrap; gap: .25rem .8rem; margin-top: .3rem; font-size: .9rem; }
+  .links a { color: var(--muted); }
+  .links a:hover { color: var(--fg); }
+  .state { display: inline-flex; align-items: center; gap: .45rem; }
+  .meter { width: 7rem; height: .5rem; background: var(--surface); border-radius: 999px; overflow: hidden; margin-top: .35rem; }
+  .meter i { display: block; height: 100%; background: var(--ok); transition: width .3s linear; }
+  .bad { color: var(--bad); }
+  .err { color: var(--bad); font-size: .85rem; max-width: 22rem; overflow-wrap: anywhere; }
+  details summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
+  textarea { width: 100%; min-width: 16rem; min-height: 6rem; background: var(--bg); border: 1px solid var(--line); border-radius: .5rem; padding: .5rem; margin: .5rem 0; }
+  .token { display: flex; gap: .5rem; align-items: center; color: var(--muted); font-size: .9rem; }
+  .token input { background: var(--surface); border: 1px solid var(--line); border-radius: .5rem; padding: .3rem .6rem; width: 12rem; }
+  .qr { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: grid; place-items: center; }
+  .qr[hidden] { display: none; }
+  .qr figure { background: #fff; color: #111; padding: 1.5rem; border-radius: 1rem; margin: 0; text-align: center; max-width: 92vw; }
+  .qr img { width: min(70vmin, 26rem); height: auto; display: block; }
+  .qr figcaption { font-size: 1.3rem; font-weight: 700; margin-top: .5rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>Panel de producción</h1>
+      <div class="sub" id="event"></div>
+    </div>
+    <div class="summary" id="summary"></div>
+    <label class="token">Token de operación <input id="token" type="password" autocomplete="off" placeholder="SUBTITULA_TOKEN"></label>
+  </div>
+  <div class="scroll">
+    <table>
+      <thead><tr>
+        <th>Sala</th><th>Estado</th><th>Audio</th><th class="num">Latencia p50 / p90</th>
+        <th class="num">Subtítulos</th><th class="num">Errores</th><th class="num">Público</th><th class="num">Costo</th><th>Glosario</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <p class="sub">La latencia se mide desde que termina el tramo de audio hasta que el subtítulo está publicado. El costo sale de los tokens que informa el modelo, con los precios de <code>SUBTITULA_PRICE_*</code>.</p>
+</div>
+<div class="qr" id="qr" hidden><figure><img alt=""><figcaption></figcaption></figure></div>
+
+<script>
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const STATE = { live: "En vivo", connecting: "Esperando audio", reconnecting: "Reconectando", ended: "Terminó", stopped: "Detenida", offline: "Sin worker" };
+  const tokenInput = document.getElementById("token");
+  try { tokenInput.value = localStorage.getItem("token") || ""; } catch {}
+  tokenInput.addEventListener("change", () => { try { localStorage.setItem("token", tokenInput.value); } catch {} });
+  const open = new Set();
+  const editing = new Set();
+
+  const ms = (v) => (v == null ? "–" : v >= 1000 ? `${(v / 1000).toFixed(1)} s` : `${v} ms`);
+  const dotFor = (s) => (s === "live" ? "live" : s === "reconnecting" || s === "offline" ? "bad" : "warn");
+
+  function row(s) {
+    const silent = s.state === "live" && s.silent_for_s > 20;
+    const alert = s.state !== "live" && s.state !== "ended" || silent || (s.latency_p90_ms || 0) > 6000 || (s.dropped || 0) > 0;
+    const level = s.level_dbfs == null ? 0 : Math.max(0, Math.min(100, (s.level_dbfs + 60) * 100 / 60));
+    const id = encodeURIComponent(s.id);
+    const links = [
+      `<a href="/s/${id}" target="_blank">Ver</a>`,
+      `<a href="/overlay/${id}?lang=es" target="_blank">Overlay OBS</a>`,
+      `<a href="#" data-qr="${esc(s.id)}" data-name="${esc(s.name)}">QR</a>`,
+      `<a href="/api/sessions/${id}/export.srt?lang=es">SRT</a>`,
+      s.source === "browser" ? `<a href="/enviar/${id}" target="_blank">Enviar audio</a>` : "",
+    ].join("");
+    return `<tr class="${alert ? "alert" : ""}" data-id="${esc(s.id)}">
+      <td><div class="name">${esc(s.name)}</div><div class="sub">${esc(s.id)}${s.source ? `, ${esc(s.source)}` : ""}</div><div class="links">${links}</div></td>
+      <td><span class="state"><span class="dot ${dotFor(s.state)}"></span>${STATE[s.state] || esc(s.state)}</span><div class="sub">${s.engine ? `motor ${esc(s.engine)}` : ""}</div></td>
+      <td>${s.level_dbfs != null ? `${s.level_dbfs} dBFS` : "–"}<div class="meter"><i style="width:${level}%"></i></div>
+        ${silent ? `<div class="bad">${Math.round(s.silent_for_s)} s sin audio</div>` : ""}</td>
+      <td class="num">${ms(s.latency_p50_ms)} / ${ms(s.latency_p90_ms)}</td>
+      <td class="num">${s.captions ?? 0}<div class="sub">${s.audio_s ? `${Math.round(s.audio_s / 60)} min de audio` : ""}</div></td>
+      <td class="num">${(s.errors || 0) + (s.dropped || 0)}${s.dropped ? `<div class="sub">${s.dropped} tramos salteados</div>` : ""}${s.last_error ? `<div class="err" title="${esc(s.last_error)}">${esc(s.last_error.slice(0, 90))}</div>` : ""}</td>
+      <td class="num">${s.viewers ?? 0}</td>
+      <td class="num">${s.cost_usd != null ? `US$ ${s.cost_usd.toFixed(3)}` : "–"}<div class="sub">${s.cost_usd_per_hour != null ? `US$ ${s.cost_usd_per_hour}/h` : ""}</div></td>
+      <td><details ${open.has(s.id) ? "open" : ""}><summary>${(s.glossary || []).length} términos</summary>
+        <textarea aria-label="Glosario de ${esc(s.name)}, un término por línea">${esc((s.glossary || []).join("\n"))}</textarea>
+        <button class="btn" data-save="${esc(s.id)}">Guardar glosario</button> <span class="sub" data-msg></span></details></td>
+    </tr>`;
+  }
+
+  async function refresh() {
+    try {
+      const d = await (await fetch("/api/status")).json();
+      document.getElementById("event").textContent = `${d.event}, motor ${d.engine}`;
+      const live = d.sessions.filter((s) => s.state === "live").length;
+      const cost = d.sessions.reduce((a, s) => a + (s.cost_usd || 0), 0);
+      const perHour = d.sessions.reduce((a, s) => a + (s.cost_usd_per_hour || 0), 0);
+      document.getElementById("summary").innerHTML =
+        `<span><b>${live}/${d.sessions.length}</b>salas en vivo</span><span><b>${d.viewers}</b>personas leyendo</span>` +
+        `<span><b>US$ ${cost.toFixed(2)}</b>gastado${perHour ? `, US$ ${perHour.toFixed(2)}/h` : ""}</span>`;
+      const tbody = document.getElementById("rows");
+      // No se redibuja una fila mientras alguien edita su glosario.
+      const html = d.sessions.map((s) => editing.has(s.id) ? tbody.querySelector(`tr[data-id="${CSS.escape(s.id)}"]`)?.outerHTML || row(s) : row(s));
+      tbody.innerHTML = html.join("");
+    } catch { /* reintenta en la próxima vuelta */ }
+  }
+
+  document.addEventListener("toggle", (e) => {
+    const tr = e.target.closest?.("tr[data-id]");
+    if (tr && e.target.tagName === "DETAILS") (e.target.open ? open.add(tr.dataset.id) : open.delete(tr.dataset.id));
+  }, true);
+  document.addEventListener("focusin", (e) => { const tr = e.target.closest("tr[data-id]"); if (e.target.tagName === "TEXTAREA" && tr) editing.add(tr.dataset.id); });
+  document.addEventListener("click", async (e) => {
+    const qr = e.target.closest("[data-qr]");
+    if (qr) {
+      e.preventDefault();
+      const box = document.getElementById("qr");
+      box.querySelector("img").src = `/api/sessions/${encodeURIComponent(qr.dataset.qr)}/qr.svg`;
+      box.querySelector("img").alt = `Código QR de ${qr.dataset.name}`;
+      box.querySelector("figcaption").textContent = `${qr.dataset.name}: escaneá para leer los subtítulos`;
+      box.hidden = false;
+      return;
+    }
+    if (e.target.closest("#qr")) { document.getElementById("qr").hidden = true; return; }
+    const save = e.target.closest("[data-save]");
+    if (!save) return;
+    const tr = save.closest("tr");
+    const terms = tr.querySelector("textarea").value.split("\n").map((t) => t.trim()).filter(Boolean);
+    const msg = tr.querySelector("[data-msg]");
+    const r = await fetch(`/api/sessions/${encodeURIComponent(save.dataset.save)}/glossary`, {
+      method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokenInput.value}` },
+      body: JSON.stringify({ terms }),
+    });
+    msg.textContent = r.ok ? "Guardado, se aplica al próximo tramo" : r.status === 401 ? "Token incorrecto" : `Error ${r.status}`;
+    if (r.ok) setTimeout(() => editing.delete(save.dataset.save), 1500);
+  });
+
+  refresh();
+  setInterval(refresh, 2000);
+</script>
+</body>
+</html>

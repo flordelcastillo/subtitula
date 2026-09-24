@@ -1,0 +1,33 @@
+# Despliegue distribuido: un hub liviano y un worker por escenario.
+# Para sumar un escenario se copia un bloque worker-* y se cambia --session.
+#   GEMINI_API_KEY=... SUBTITULA_TOKEN=... docker compose up
+x-worker: &worker
+  build: .
+  restart: unless-stopped
+  depends_on: [hub]
+  environment:
+    GEMINI_API_KEY: ${GEMINI_API_KEY}
+    SUBTITULA_TOKEN: ${SUBTITULA_TOKEN:-cambiame}
+    SUBTITULA_HUB: http://hub:8000
+
+services:
+  hub:
+    build: .
+    restart: unless-stopped
+    command: ["subtitula", "hub", "--port", "8000"]
+    ports: ["8000:8000"]
+    environment:
+      SUBTITULA_TOKEN: ${SUBTITULA_TOKEN:-cambiame}
+      SUBTITULA_PUBLIC_URL: ${SUBTITULA_PUBLIC_URL:-http://localhost:8000}
+    volumes: ["subtitula-data:/data"]
+
+  worker-sala-a:
+    <<: *worker
+    command: ["subtitula", "worker", "--session", "sala-a"]
+
+  worker-sala-b:
+    <<: *worker
+    command: ["subtitula", "worker", "--session", "sala-b"]
+
+volumes:
+  subtitula-data:

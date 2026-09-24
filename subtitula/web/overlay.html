@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Overlay de subtítulos</title>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;700&display=swap" rel="stylesheet">
+<!--
+  Fuente de navegador para OBS / vMix. Parámetros opcionales en la URL:
+    lang=es|en|pt|original   idioma (por defecto es)
+    lines=2                  cantidad de líneas visibles
+    size=44                  tamaño de letra en px (pensado para 1920x1080)
+    hide=8                   segundos sin habla hasta ocultar el subtítulo (0 = nunca)
+    pos=bottom|top           ubicación
+    box=0                    sin caja de fondo (sólo contorno)
+-->
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden; }
+  body { font-family: "Atkinson Hyperlegible Next", "Atkinson Hyperlegible", system-ui, sans-serif; height: 100vh;
+    display: flex; flex-direction: column; justify-content: var(--justify, flex-end); align-items: center; padding: 4vh 6vw; box-sizing: border-box; }
+  #cc { max-width: 80vw; text-align: center; transition: opacity .3s ease; }
+  #cc.hidden { opacity: 0; }
+  .line { display: inline; font-size: var(--size, 44px); line-height: 1.45; color: #fff; font-weight: 700;
+    background: rgba(8, 10, 20, .78); padding: .08em .35em; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+  body.nobox .line { background: none; text-shadow: 0 0 4px #000, 0 0 2px #000, 2px 2px 3px #000; }
+</style>
+</head>
+<body>
+<div id="cc" class="hidden" aria-live="polite"><span class="line"></span></div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const sid = decodeURIComponent(location.pathname.split("/").pop());
+  const lang = q.get("lang") || "es";
+  const maxLines = Math.max(1, parseInt(q.get("lines") || "2", 10));
+  const hideAfter = parseFloat(q.get("hide") ?? "8");
+  document.body.style.setProperty("--size", `${parseInt(q.get("size") || "44", 10)}px`);
+  if (q.get("pos") === "top") document.body.style.setProperty("--justify", "flex-start");
+  if (q.get("box") === "0") document.body.classList.add("nobox");
+
+  const cc = document.getElementById("cc"), line = cc.querySelector(".line");
+  let recent = [], timer;
+  const textOf = (c) => (lang === "original" || lang === c.lang ? c.text : (c.tr?.[lang] || c.text));
+
+  function show(c) {
+    recent.push(textOf(c));
+    line.textContent = recent.join(" ");
+    // Recorta desde el principio hasta que entre en la cantidad de líneas pedida.
+    const lineHeight = parseFloat(getComputedStyle(line).lineHeight);
+    while (recent.length > 1 && line.getClientRects().length > maxLines) {
+      recent.shift();
+      line.textContent = recent.join(" ");
+    }
+    if (line.getClientRects().length > maxLines && lineHeight) {
+      const words = line.textContent.split(" ");
+      while (words.length > 1 && line.getClientRects().length > maxLines) { words.shift(); line.textContent = words.join(" "); }
+      recent = [line.textContent];
+    }
+    cc.classList.remove("hidden");
+    clearTimeout(timer);
+    if (hideAfter > 0) timer = setTimeout(() => { cc.classList.add("hidden"); recent = []; }, hideAfter * 1000);
+  }
+
+  let lastSeq = 0;
+  const es = new EventSource(`/api/sessions/${encodeURIComponent(sid)}/stream?since=${Number.MAX_SAFE_INTEGER}`);
+  es.onmessage = (e) => { const c = JSON.parse(e.data); if (c.seq > lastSeq) { lastSeq = c.seq; show(c); } };
+</script>
+</body>
+</html>

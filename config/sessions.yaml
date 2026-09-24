@@ -1,0 +1,40 @@
+# Escenarios del evento. Cada uno es un worker independiente.
+event: Nerdearla 2026
+# Idiomas de salida. La vista de audiencia ofrece además el "original" de cada tramo.
+languages: [es, en, pt]
+# gemini (por defecto), local (faster-whisper + Gemma por Ollama) o fake (pruebas sin modelo)
+engine: gemini
+data_dir: data
+
+sessions:
+  - id: sala-a
+    name: "Building Multilingual Conversational AI Agents"
+    speaker: Thor Schaeff
+    topic: Voice AI agents, speech-to-text, text-to-speech, LLMs, multilingual
+    source: samples/thor-schaeff-multilingual-agents-en.mp3
+    language: en
+    loop: true
+    glossary: [ElevenLabs, Thor Schaeff, Gemini]
+
+  - id: sala-b
+    name: "Programming is dead. Long live programming!"
+    speaker: Miguel Ángel Durán (midudev)
+    topic: Programación con IA, agentes, desarrollo web
+    source: samples/midudev-programming-is-dead-es.mp3
+    language: es
+    loop: true
+    glossary: [midudev, JavaScript, Cursor, Claude Code]
+
+  # Más ejemplos de fuentes (descomentar y ajustar):
+  # - id: auditorio
+  #   name: Auditorio principal
+  #   source: https://www.youtube.com/watch?v=VIDEO_EN_VIVO   # requiere yt-dlp
+  # - id: sala-c
+  #   name: Sala C
+  #   source: srt://0.0.0.0:9000?mode=listener                # OBS/vMix envían por SRT
+  # - id: sala-d
+  #   name: Sala D
+  #   source: browser                                         # audio desde /enviar/sala-d
+  # - id: sala-e
+  #   name: Sala E
+  #   source: mic                                             # micrófono de la máquina

@@ -1,0 +1,28 @@
+# Glosario global: nombres propios y términos técnicos que el modelo debe escribir así.
+# Cada escenario puede sumar los suyos en sessions.yaml, y se pueden corregir en vivo desde /admin.
+terms:
+  - Nerdearla
+  - Sysarmy
+  - Konex
+  - Kubernetes
+  - kubectl
+  - Docker
+  - PostgreSQL
+  - GitHub
+  - GitLab
+  - open source
+  - Gemini
+  - Gemma
+  - Google DeepMind
+  - LLM
+  - RAG
+  - MCP
+  - DevOps
+  - SRE
+  - observabilidad
+  - Terraform
+  - AWS
+  - Linux
+  - Python
+  - TypeScript
+  - Rust
