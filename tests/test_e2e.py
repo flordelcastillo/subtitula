@@ -163,6 +163,35 @@ def test_two_stage_publishes_original_then_translation(tmp_path, talk_wav, monke
     assert all(not c.pending for c in caps)
 
 
+def test_summary_is_cached_and_generated_once(tmp_path, talk_wav, monkeypatch):
+    """"¿Qué me perdí?": una sola generación aunque lo pidan muchos a la vez."""
+    import asyncio
+
+    from subtitula.summary import Summarizer
+
+    calls = []
+
+    async def fake_generate(self, name, speaker, captions, lang, minutes):
+        calls.append(lang)
+        await asyncio.sleep(0.2)
+        return {"bullets": [f"resumen en {lang}"], "empty": False, "generated_at": time.time(), "model": "gemma-4"}
+
+    monkeypatch.setattr(Summarizer, "_generate", fake_generate)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    with TestClient(make_app(tmp_path, talk_wav)) as client:
+        assert client.get("/api/sessions/sala-1/summary?lang=es").status_code == 503  # sin clave, error claro
+        monkeypatch.setenv("GEMINI_API_KEY", "x")
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(8) as pool:
+            replies = list(pool.map(lambda _: client.get("/api/sessions/sala-1/summary?lang=es").json(), range(8)))
+        assert all(r["bullets"] == ["resumen en es"] for r in replies)
+        assert calls == ["es"]
+        client.get("/api/sessions/sala-1/summary?lang=pt")
+        assert calls == ["es", "pt"]
+
+
 def test_listen_websocket_gets_interpretation_audio(tmp_path, talk_wav):
     """La interpretación hablada llega sólo a quien escucha ese idioma."""
     app = make_app(tmp_path, talk_wav)

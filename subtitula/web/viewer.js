@@ -80,7 +80,7 @@
       $("#dual").setAttribute("aria-pressed", String(dual));
       // En el motor en vivo cada idioma corta sus propias líneas: no hay un original línea a línea.
       $("#dual").hidden = lang === "original" || tracked;
-      $("#theme").textContent = document.documentElement.dataset.theme === "light" ? "Oscuro" : "Claro";
+      $("#theme").textContent = document.documentElement.dataset.theme === "light" ? "Tema oscuro" : "Tema claro";
       const canListen = speechLangs.includes(lang);
       $("#listen").hidden = !canListen;
       $("#listen").setAttribute("aria-pressed", String(player.on));
@@ -176,7 +176,7 @@
     function renderDownloads() {
       const q = `lang=${encodeURIComponent(lang)}`;
       const label = lang === "original" ? "original" : (langName[lang] || lang).toLowerCase();
-      $(".dl .menu").innerHTML = [["txt", "Texto de la charla"], ["srt", "Subtítulos SRT"], ["vtt", "Subtítulos WebVTT"]]
+      $(".dl .files").innerHTML = [["txt", "Texto de la charla"], ["srt", "Subtítulos SRT"], ["vtt", "Subtítulos WebVTT"]]
         .map(([fmt, name]) => `<a href="/api/sessions/${encodeURIComponent(sid)}/export.${fmt}?${q}" download>${name} (${esc(label)})</a>`).join("");
     }
 
@@ -245,6 +245,31 @@
     }
 
     $("#jump").addEventListener("click", () => { scrollToEnd(); $("#jump").hidden = true; });
+
+    // "¿Qué me perdí?": resumen de los últimos 5 minutos en el idioma elegido.
+    const recap = $("#recap-panel"), recapBody = recap.querySelector(".recap-body");
+    const recapLang = () => (lang === "original" ? session.language || "es" : lang);
+    async function openRecap() {
+      recap.hidden = false;
+      recapBody.innerHTML = `<p class="meta">Resumiendo los últimos 5 minutos…</p>`;
+      try {
+        const r = await fetch(`/api/sessions/${encodeURIComponent(sid)}/summary?lang=${encodeURIComponent(recapLang())}&minutes=5`);
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || r.status);
+        if (d.empty || !d.bullets.length) {
+          recapBody.innerHTML = `<p class="meta">Todavía no se dijo lo suficiente para resumir. Probá en un rato.</p>`;
+          return;
+        }
+        const ago = Math.max(0, Math.round(Date.now() / 1000 - d.generated_at));
+        const model = d.model.startsWith("gemma") ? "Gemma" : "Gemini";
+        recapBody.innerHTML = `<ul>${d.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>`
+          + `<p class="meta">Resumen de los últimos 5 minutos, hecho con ${model} ${ago < 5 ? "recién" : `hace ${ago} s`}.</p>`;
+      } catch (err) {
+        recapBody.innerHTML = `<p class="meta">No se pudo resumir ahora (${esc(err.message)}). Probá de nuevo en un minuto.</p>`;
+      }
+    }
+    $("#recap").addEventListener("click", () => (recap.hidden ? openRecap() : (recap.hidden = true)));
+    $("#recap-close").addEventListener("click", () => { recap.hidden = true; });
     window.addEventListener("scroll", () => { if (following()) $("#jump").hidden = true; }, { passive: true });
 
     // Conexión

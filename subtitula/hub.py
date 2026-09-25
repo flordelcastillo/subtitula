@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, Response, Streami
 
 from .captions import Caption, to_srt, to_txt, to_vtt
 from .config import LANG_NAMES, AppConfig, SessionConfig
+from .summary import Summarizer
 
 log = logging.getLogger(__name__)
 
@@ -177,6 +178,7 @@ class LocalPublisher:
 
 def create_app(config: AppConfig, token: str = "", run_workers: bool = False) -> FastAPI:
     hub = Hub(config, token=token)
+    summarizer = Summarizer()
     tasks: list[asyncio.Task] = []
 
     @asynccontextmanager
@@ -286,6 +288,19 @@ def create_app(config: AppConfig, token: str = "", run_workers: bool = False) ->
 
         return StreamingResponse(events(), media_type="text/event-stream", headers={
             "Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    @app.get("/api/sessions/{sid}/summary")
+    async def summary(sid: str, lang: str = "es", minutes: int = 5):
+        """"¿Qué me perdí?": resumen de los últimos minutos en el idioma pedido."""
+        caps = _get(sid)
+        if not (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")):
+            raise HTTPException(503, "El resumen necesita GEMINI_API_KEY")
+        s = hub.meta[sid]
+        try:
+            return await summarizer.summarize(sid, s.name, s.speaker, caps, lang, max(1, min(minutes, 30)))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("[%s] no se pudo resumir: %s", sid, exc)
+            raise HTTPException(503, "No se pudo generar el resumen ahora; probá en un minuto") from exc
 
     @app.get("/api/sessions/{sid}/export.{fmt}")
     async def export(sid: str, fmt: str, lang: str = "original"):

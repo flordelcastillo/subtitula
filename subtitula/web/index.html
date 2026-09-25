@@ -57,8 +57,22 @@
   details.dl summary::-webkit-details-marker { display: none; }
   details.dl .menu { position: absolute; right: 0; bottom: 2.6rem; background: var(--surface); border: 1px solid var(--line); border-radius: .75rem;
     padding: .4rem; display: grid; min-width: 13rem; }
-  details.dl .menu a { padding: .45rem .7rem; border-radius: .5rem; text-decoration: none; }
-  details.dl .menu a:hover { background: var(--bg); }
+  details.dl .menu a, details.dl .menu .menu-item { padding: .45rem .7rem; border-radius: .5rem; text-decoration: none;
+    display: block; text-align: left; background: none; border: 0; cursor: pointer; width: 100%; }
+  details.dl .menu a:hover, details.dl .menu .menu-item:hover { background: var(--bg); }
+  details.dl .files { border-top: 1px solid var(--line); margin-top: .3rem; padding-top: .3rem; }
+  .foot { gap: .5rem; }
+  .foot .tools { margin-left: auto; }
+  .foot #jump { position: absolute; bottom: calc(100% + .25rem); left: 50%; transform: translateX(-50%); }
+  .recap { position: fixed; left: 0; right: 0; bottom: 3.6rem; z-index: 3; max-width: 52rem; margin: 0 auto;
+    max-height: 60vh; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 1rem;
+    padding: 1rem 1.1rem 1.2rem; box-shadow: 0 -12px 40px rgba(0, 0, 0, .35); }
+  .recap[hidden] { display: none; }
+  .recap-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+  .recap h2 { font-size: 1.2rem; margin: 0; }
+  .recap ul { margin: .8rem 0 .6rem; padding-left: 1.2rem; font-size: 1.15rem; line-height: 1.45; }
+  .recap li + li { margin-top: .45rem; }
+  .recap .meta { color: var(--muted); font-size: .88rem; margin: 0; }
 </style>
 </head>
 <body>
@@ -80,16 +94,26 @@
   <main class="captions" aria-live="polite" aria-relevant="additions">
     <p class="waiting">Esperando que arranque la charla. Los subtítulos aparecen acá apenas alguien habla.</p>
   </main>
+  <section class="recap" id="recap-panel" hidden aria-live="polite" aria-labelledby="recap-title">
+    <div class="recap-head">
+      <h2 id="recap-title">Lo último que se dijo</h2>
+      <button class="btn" id="recap-close" aria-label="Cerrar el resumen">Cerrar</button>
+    </div>
+    <div class="recap-body"></div>
+  </section>
   <footer class="foot">
     <div class="status"><span class="dot" id="conn"></span><span id="conn-text">Conectando</span></div>
+    <button class="btn" id="recap">¿Qué me perdí?</button>
     <button class="btn primary" id="jump" hidden>Volver al vivo</button>
     <div class="tools">
       <button class="btn" data-size="-1" aria-label="Achicar el texto">A−</button>
       <button class="btn" data-size="1" aria-label="Agrandar el texto">A+</button>
-      <button class="btn" id="theme" aria-label="Cambiar entre tema oscuro y claro">Claro</button>
       <details class="dl">
-      <summary class="btn">Descargar</summary>
-      <div class="menu"></div>
+        <summary class="btn">Más</summary>
+        <div class="menu">
+          <button class="menu-item" id="theme">Tema claro</button>
+          <div class="files"></div>
+        </div>
       </details>
     </div>
   </footer>
