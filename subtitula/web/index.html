@@ -14,15 +14,18 @@
 
   /* Selector de sala */
   .pick { max-width: 44rem; margin: 0 auto; padding: 3rem 1rem 4rem; width: 100%; }
-  .pick h1 { font-size: clamp(2rem, 7vw, 3.2rem); line-height: 1.05; margin: 0 0 .6rem; letter-spacing: -.01em; }
-  .pick p.lead { color: var(--muted); margin: 0 0 2rem; max-width: 34rem; }
+  .pick h1 { font-size: var(--t-display); line-height: 1.05; margin: 0 0 .6rem; }
+  .pick p.lead { color: var(--fg-2); margin: 0 0 var(--s-6); max-width: 34rem; }
   .rooms { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
-  .rooms a { display: grid; grid-template-columns: auto 1fr; gap: .2rem 1rem; padding: 1.1rem .25rem; text-decoration: none; border-bottom: 1px solid var(--line); }
-  .rooms a:hover .room-name { text-decoration: underline; text-underline-offset: 4px; }
+  .rooms li { border-bottom: 1px solid var(--line); }
+  .rooms a { display: grid; grid-template-columns: auto 1fr; gap: .2rem 1rem; padding: 1.1rem .75rem; margin: 0 -.75rem; text-decoration: none;
+    border-radius: var(--r-card); transition: background-color .15s var(--ease); }
+  .rooms a:hover, .rooms a:focus-visible { background: var(--tint); }
+  .rooms a:active { background: color-mix(in srgb, var(--stage) 22%, transparent); }
   .rooms .dot { margin-top: .55rem; }
-  .room-name { font-size: 1.25rem; font-weight: 700; line-height: 1.3; }
-  .room-meta { grid-column: 2; color: var(--muted); font-size: .95rem; }
-  .empty { color: var(--muted); padding: 1.5rem 0; }
+  .room-name { font-size: var(--t-lg); font-weight: 700; line-height: 1.3; }
+  .room-meta { grid-column: 2; color: var(--fg-2); font-size: var(--t-sm); }
+  .empty { color: var(--fg-2); padding: var(--s-5) 0; }
 
   /* Vista de subtítulos */
   header.bar { position: sticky; top: 0; z-index: 2; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px);
@@ -39,13 +42,14 @@
 
   main.captions { flex: 1; width: 100%; max-width: 52rem; margin: 0 auto; padding: 1.5rem 1rem calc(var(--foot-h, 6rem) + 1.5rem);
     display: flex; flex-direction: column; justify-content: flex-end; }
-  .cap { font-size: var(--cap-size); line-height: 1.32; margin: 0 0 .55em; opacity: .5; transition: opacity .4s ease;
-    overflow-wrap: anywhere; }
-  .cap.recent { opacity: .78; }
-  .cap.last { opacity: 1; border-left: 4px solid var(--stage); padding-left: .6em; margin-left: calc(-.6em - 4px); }
+  /* Las líneas viejas se apagan de a poco; la que se está diciendo lleva la luz de escenario. */
+  .cap { font-size: var(--cap-size); line-height: 1.32; margin: 0 0 .55em; color: var(--fg-2); transition: color .4s var(--ease), opacity .4s var(--ease);
+    overflow-wrap: anywhere; opacity: .7; }
+  .cap.recent { opacity: .9; }
+  .cap.last { opacity: 1; color: var(--fg); border-left: 5px solid var(--stage); padding-left: .6em; margin-left: calc(-.6em - 5px); }
   .cap.pending { color: var(--muted); }
   .cap .src { display: block; font-size: .5em; color: var(--muted); margin-top: .15em; }
-  .waiting { color: var(--muted); font-size: 1.25rem; max-width: 30rem; }
+  .waiting { color: var(--fg-2); font-size: var(--t-lg); max-width: 30rem; }
 
   .foot { position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; align-items: center; gap: .5rem;
     padding: .6rem 1rem calc(.6rem + env(safe-area-inset-bottom)); background: linear-gradient(transparent, var(--bg) 40%); pointer-events: none; }
@@ -66,8 +70,8 @@
   .foot .tools { margin-left: auto; }
   .foot #jump { position: absolute; bottom: calc(100% + .25rem); left: 50%; transform: translateX(-50%); }
   .recap { position: fixed; left: 0; right: 0; bottom: 3.6rem; z-index: 3; max-width: 52rem; margin: 0 auto;
-    max-height: 60vh; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 1rem;
-    padding: 1rem 1.1rem 1.2rem; box-shadow: 0 -12px 40px rgba(0, 0, 0, .35); }
+    max-height: 60vh; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-panel);
+    padding: 1rem 1.1rem 1.2rem; box-shadow: var(--shadow-panel); }
   .recap[hidden] { display: none; }
   .recap-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
   .recap h2 { font-size: 1.2rem; margin: 0; }

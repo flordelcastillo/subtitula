@@ -1,65 +1,95 @@
-/* Subtitula: tokens compartidos por la vista de audiencia, el panel y la página de envío. */
+/* Subtitula: tokens compartidos por la vista de audiencia, la pantalla de sala, el panel y la página de envío.
+   Idea visual: una sala a oscuras y una sola luz de escenario (ámbar) que marca lo que está pasando ahora.
+   Todo lo demás queda quieto para que la línea que se está diciendo sea lo único que llama la atención. */
 :root {
+  /* Color */
   --ink: #121a30;        /* sala a oscuras */
   --ink-2: #1b2542;
   --line: #2c3960;
   --paper: #f3eee4;      /* blanco cálido de pantalla */
+  --paper-2: #c9d0e3;    /* texto secundario que sigue leyéndose bien (7:1 sobre --ink) */
   --muted: #9aa5c4;
   --stage: #f4b54a;      /* luz de escenario: sólo marca lo que está en vivo */
+  --stage-ink: #1a1204;  /* texto sobre la luz */
   --ok: #7fd1a8;
   --warn: #f4b54a;
   --bad: #ff8a7a;
   --bg: var(--ink);
   --fg: var(--paper);
+  --fg-2: var(--paper-2);
   --surface: var(--ink-2);
-  --cap-size: clamp(1.6rem, 5.2vw, 2.6rem);
+  --tint: color-mix(in srgb, var(--stage) 14%, transparent);   /* fondo de lo elegido o tocado */
+  /* Tipografía: una sola familia, pensada para leer de lejos y con poca luz */
   --font: "Atkinson Hyperlegible Next", "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --t-sm: .9rem;
+  --t-base: 1.0625rem;
+  --t-lg: 1.25rem;
+  --t-xl: 1.6rem;
+  --t-display: clamp(2rem, 7vw, 3.2rem);
+  --cap-size: clamp(1.6rem, 5.2vw, 2.6rem);
+  /* Espacio y radios */
+  --s-1: .25rem; --s-2: .5rem; --s-3: .75rem; --s-4: 1rem; --s-5: 1.5rem; --s-6: 2.5rem;
+  --r-pill: 999px; --r-card: .75rem; --r-panel: 1rem;
+  --shadow-panel: 0 -12px 40px rgba(0, 0, 0, .35);
+  --ease: cubic-bezier(.2, .7, .2, 1);
   color-scheme: dark;
 }
 :root[data-theme="light"] {
   --bg: #f7f4ec;
   --fg: #16203a;
+  --fg-2: #3d4763;
   --surface: #ebe6d9;
   --line: #cfc7b4;
   --muted: #5b6480;
   --stage: #b86e00;
+  --stage-ink: #fff8ea;
   --ok: #1f7a4d;
   --bad: #b3261e;
+  --shadow-panel: 0 -12px 40px rgba(40, 30, 0, .18);
   color-scheme: light;
 }
 /* Alto contraste: blanco puro sobre negro, líneas más marcadas y sin atenuar las líneas viejas. */
 :root[data-contrast="high"] {
   --bg: #000000;
   --fg: #ffffff;
+  --fg-2: #ffffff;
   --surface: #111111;
   --line: #8a8a8a;
   --muted: #d6d6d6;
   --stage: #ffd166;
+  --stage-ink: #000000;
   --ok: #7cff9e;
   --bad: #ff8f8f;
+  --tint: #222222;
   color-scheme: dark;
 }
 :root[data-contrast="high"] .cap { opacity: .85; }
 :root[data-contrast="high"] .cap.last { opacity: 1; }
+
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 body {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font);
-  font-size: 1.0625rem;
+  font-size: var(--t-base);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 a { color: inherit; }
 button, select, input, textarea { font: inherit; color: inherit; }
+::selection { background: var(--stage); color: var(--stage-ink); }
 :focus-visible { outline: 3px solid var(--stage); outline-offset: 2px; border-radius: 4px; }
+h1, h2, h3 { line-height: 1.15; letter-spacing: -.01em; text-wrap: balance; }
+p { text-wrap: pretty; }
 
+/* Botones y fichas: mismo tamaño táctil en toda la interfaz, con respuesta visible al tocar. */
 .btn {
   background: transparent;
   border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: .35rem .9rem;
+  border-radius: var(--r-pill);
+  padding: .35rem .95rem;
   min-height: 44px;  /* objetivo táctil cómodo (Apple HIG, Material); WCAG 2.5.8 pide 24 */
   touch-action: manipulation;  /* sin demora de doble toque; el zoom de la página sigue disponible */
   cursor: pointer;
@@ -68,17 +98,38 @@ button, select, input, textarea { font: inherit; color: inherit; }
   align-items: center;
   gap: .4rem;
   white-space: nowrap;
+  transition: background-color .15s var(--ease), border-color .15s var(--ease), color .15s var(--ease), transform .12s var(--ease);
 }
-.btn:hover { border-color: var(--muted); }
-.btn:active { transform: scale(.98); }
+.btn:hover { border-color: var(--muted); background: var(--tint); }
+.btn:active { transform: scale(.97); }
 .btn[hidden] { display: none; }
 .btn[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
-.btn.primary { background: var(--stage); color: #1a1204; border-color: var(--stage); font-weight: 700; }
+.btn.primary { background: var(--stage); color: var(--stage-ink); border-color: var(--stage); font-weight: 700; }
+.btn.primary:hover { background: color-mix(in srgb, var(--stage) 88%, var(--fg)); border-color: transparent; }
+.btn[disabled], .btn[aria-disabled="true"] { opacity: .5; cursor: default; transform: none; }
 
+/* Estado en vivo: el punto late despacio; es la única animación que no responde a un toque. */
 .dot { width: .6rem; height: .6rem; border-radius: 50%; background: var(--muted); display: inline-block; flex: none; }
-.dot.live { background: var(--ok); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 25%, transparent); }
+.dot.live { background: var(--ok); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 25%, transparent); animation: pulse 2.4s var(--ease) infinite; }
 .dot.warn { background: var(--warn); }
 .dot.bad { background: var(--bad); }
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 30%, transparent); }
+  50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--ok) 10%, transparent); }
+}
+
+/* Etiqueta de estado con texto: nunca sólo color. */
+.badge { display: inline-flex; align-items: center; gap: .45rem; font-size: var(--t-sm); color: var(--fg-2); }
+.badge.live { color: var(--ok); font-weight: 700; }
+
+/* Superficies y campos */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-panel); }
+input[type="text"], input[type="password"], input[type="url"], select, textarea {
+  background: var(--surface); border: 1px solid var(--line); border-radius: .5rem; padding: .45rem .7rem; min-height: 44px;
+  transition: border-color .15s var(--ease);
+}
+input:focus-visible, select:focus-visible, textarea:focus-visible { border-color: var(--stage); }
+code { font-size: .92em; background: var(--surface); padding: .1em .35em; border-radius: .3em; }
 
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
