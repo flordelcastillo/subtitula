@@ -31,7 +31,7 @@ echo GEMINI_API_KEY=tu-clave > .env
 subtitula serve
 ```
 
-El motor por defecto (`gemini-live`) mantiene una sesión abierta por sala e idioma y no hace un pedido por frase, así que no choca con el límite de pedidos por minuto. En las pruebas, dos salas con dos idiomas cada una (4 sesiones) anduvieron con una clave común. Para un evento con muchas salas conviene activar la facturación del proyecto en AI Studio: sube el límite de sesiones simultáneas. Las dos salas de ejemplo gastaron US$ 0,002 cada una en el primer minuto, según los tokens que informó la API.
+El motor por defecto (`gemini-live`) mantiene una sesión abierta por sala e idioma y no hace un pedido por frase, así que no choca con el límite de pedidos por minuto. En las pruebas, dos salas con dos idiomas cada una (4 sesiones) anduvieron con una clave común. Para un evento con muchas salas conviene activar la facturación del proyecto en AI Studio: sube el límite de sesiones simultáneas. El costo de cada sala se ve en `/admin` (ver [Costos](#costos)).
 
 Abrí <http://localhost:8000>. Hay dos salas de ejemplo, en loop, con fragmentos reales de Nerdearla 2025: una charla en inglés ([Thor Schaeff, *Building Multilingual Conversational AI Agents*](https://www.youtube.com/watch?v=GkVjMxYi5gA)) y otra en español ([Miguel Ángel Durán, *Programming is dead. Long live programming!*](https://www.youtube.com/watch?v=zynI57qVj-U)).
 
@@ -51,6 +51,37 @@ subtitula file samples/thor-schaeff-multilingual-agents-en.mp3 --language en --b
 ```
 
 Muestra cada línea del original (en blanco) y de cada traducción (en amarillo), deja `.srt`, `.vtt` y `.txt` por idioma al lado del archivo y al final informa la demora medida y los tokens usados. Con esto se hicieron los subtítulos en inglés del video demo.
+
+## Costos
+
+Precios oficiales de la [página de precios de la Gemini API](https://ai.google.dev/gemini-api/docs/pricing) (plan pago, 25/09/2026). Cada worker calcula su costo con el modelo que usó y el panel lo muestra por sala (`subtitula/pricing.py`).
+
+| Motor | Qué se paga | Por sala-hora |
+|---|---|---|
+| `gemini-live` (por defecto) | Live Translate: US$ 0,0053/min de audio de entrada + US$ 0,0315/min de audio de salida, por cada sesión (una por idioma de destino) | US$ 2,21 por idioma |
+| `gemini` (por tramos) | `gemini-3.5-transcribe` a US$ 0,005/min (audio de entrada y texto de salida), más la traducción de texto con flash-lite a los idiomas del evento | unos US$ 0,65 para todos los idiomas (estimado: US$ 0,30 de transcripción y ~US$ 0,35 de traducción) |
+| `local` | Nada de API: faster-whisper y Gemma en una máquina propia con GPU | US$ 0 |
+
+Tres cosas bajan la cuenta del motor en vivo sin tocar la calidad:
+
+- **Idiomas bajo demanda.** Cada sala mantiene abierta sólo la sesión de su idioma principal. Las demás (por ejemplo, portugués) se abren cuando alguien las lee o las escucha y se cierran a los 2 minutos sin público. En una conferencia de 30 charlas con tres idiomas, la mayoría de esas sesiones no se abre nunca.
+- **Pausa en silencio.** Tras 10 s sin voz (cortes, cambio de orador, almuerzo) no se manda audio. Cuando vuelve la voz se reanuda, con medio segundo previo para no perder la primera sílaba.
+- **La voz ya está paga.** Live Translate genera y cobra la interpretación hablada aunque no se use. Subtitula la aprovecha: el público la puede escuchar con auriculares sin costo extra.
+
+## Qué pasa si…
+
+| Situación durante el evento | Qué hace Subtitula |
+|---|---|
+| Se corta la fuente de audio | El worker reintenta con espera exponencial y la fila de la sala se pone roja en `/admin` |
+| Gemini devuelve un error o la sesión Live se cae | La sesión se reabre retomando el contexto (session resumption); si el retome falló, abre una nueva. El panel cuenta las reconexiones |
+| La charla dura horas | La sesión usa compresión de contexto con ventana deslizante y retoma cuando el servidor pide reconectar |
+| Se acaba la cuota o un modelo está saturado | El motor por tramos pasa al modelo siguiente del pool ante un 429 o un 503. Sin nube, está el motor local |
+| Alguien recarga la página o se le corta el wifi | El navegador reconecta solo; con `Last-Event-ID` recibe sólo las líneas que se perdió |
+| Un nombre sale mal escrito | Se agrega al glosario de la sala desde `/admin`: la ortografía se corrige desde la línea siguiente en todas las pistas y las sesiones Live se reconectan con el vocabulario nuevo |
+| Alguien pregunta en español en una charla en inglés | La sesión repite la pregunta tal cual en la pista en español, en lugar de dejar un hueco |
+| Nadie está leyendo en portugués | La sesión de portugués queda en espera y no cobra hasta que alguien la pide |
+| La sala queda en silencio | No se manda audio a la API; el panel lo muestra como "en pausa por silencio" |
+| La compu de la sala no tiene nada instalado | Se abre `/enviar/<sala>` en el navegador y se elige la entrada de audio de la consola |
 
 ## Cómo funciona
 
