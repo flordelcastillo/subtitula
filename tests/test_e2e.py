@@ -161,3 +161,22 @@ def test_two_stage_publishes_original_then_translation(tmp_path, talk_wav, monke
     caps = reloaded.captions["sala-1"]
     assert [c.seq for c in caps] == sorted({c.seq for c in caps})
     assert all(not c.pending for c in caps)
+
+
+def test_listen_websocket_gets_interpretation_audio(tmp_path, talk_wav):
+    """La interpretación hablada llega sólo a quien escucha ese idioma."""
+    app = make_app(tmp_path, talk_wav)
+    hub = app.state.hub
+    with TestClient(app) as client:
+        with client.websocket_connect("/api/sessions/sala-1/listen?lang=es") as ws:
+            assert ws.receive_json() == {"session": "sala-1", "lang": "es"}
+            client.portal.call(hub.speech, "sala-1", "pt", b"\x01\x00" * 10, 24000)  # otro idioma: no llega
+            client.portal.call(hub.speech, "sala-1", "es", b"\x02\x00" * 10, 24000)
+            assert ws.receive_json() == {"rate": 24000}
+            assert ws.receive_bytes() == b"\x02\x00" * 10
+            info = next(s for s in client.get("/api/sessions").json()["sessions"] if s["id"] == "sala-1")
+            assert info["listeners"] == 1
+        deadline = time.time() + 3
+        while time.time() < deadline and hub.listeners.get(("sala-1", "es")):
+            time.sleep(0.05)
+        assert not hub.listeners.get(("sala-1", "es"))

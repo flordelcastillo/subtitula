@@ -98,7 +98,7 @@
         ${s.translations_pending ? `<div class="sub">${s.translations_pending} en cola</div>` : ""}</td>
       <td class="num">${s.captions ?? 0}<div class="sub">${s.audio_s ? `${Math.round(s.audio_s / 60)} min de audio` : ""}</div></td>
       <td class="num">${(s.errors || 0) + (s.dropped || 0)}${s.dropped ? `<div class="sub">${s.dropped} tramos salteados</div>` : ""}${s.last_error ? `<div class="err" title="${esc(s.last_error)}">${esc(s.last_error.slice(0, 90))}</div>` : ""}</td>
-      <td class="num">${s.viewers ?? 0}</td>
+      <td class="num">${s.viewers ?? 0}${s.listeners ? `<div class="sub">${s.listeners} escuchando</div>` : ""}</td>
       <td class="num">${s.cost_usd != null ? `US$ ${s.cost_usd.toFixed(3)}` : "–"}<div class="sub">${s.cost_usd_per_hour != null ? `US$ ${s.cost_usd_per_hour}/h` : ""}</div></td>
       <td><details ${open.has(s.id) ? "open" : ""}><summary>${(s.glossary || []).length} términos</summary>
         <textarea aria-label="Glosario de ${esc(s.name)}, un término por línea">${esc((s.glossary || []).join("\n"))}</textarea>
@@ -114,7 +114,7 @@
       const cost = d.sessions.reduce((a, s) => a + (s.cost_usd || 0), 0);
       const perHour = d.sessions.reduce((a, s) => a + (s.cost_usd_per_hour || 0), 0);
       document.getElementById("summary").innerHTML =
-        `<span><b>${live}/${d.sessions.length}</b>salas en vivo</span><span><b>${d.viewers}</b>personas leyendo</span>` +
+        `<span><b>${live}/${d.sessions.length}</b>salas en vivo</span><span><b>${d.viewers}</b>personas leyendo</span><span><b>${d.listeners || 0}</b>escuchando</span>` +
         `<span><b>US$ ${cost.toFixed(2)}</b>gastado${perHour ? `, US$ ${perHour.toFixed(2)}/h` : ""}</span>`;
       const tbody = document.getElementById("rows");
       // No se redibuja una fila mientras alguien edita su glosario.

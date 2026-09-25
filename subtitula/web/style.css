@@ -54,6 +54,7 @@ button, select, input, textarea { font: inherit; color: inherit; }
   white-space: nowrap;
 }
 .btn:hover { border-color: var(--muted); }
+.btn[hidden] { display: none; }
 .btn[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
 .btn.primary { background: var(--stage); color: #1a1204; border-color: var(--stage); font-weight: 700; }
 

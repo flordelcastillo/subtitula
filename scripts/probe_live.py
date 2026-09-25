@@ -76,7 +76,10 @@ async def main() -> None:
                         if part.text:
                             print(f"{t:6.2f}s  TEXT {part.text!r}", flush=True)
                         if part.inline_data and os.environ.get("SHOW_AUDIO"):
-                            print(f"{t:6.2f}s  AUDIO {len(part.inline_data.data)} bytes", flush=True)
+                            print(f"{t:6.2f}s  AUDIO {len(part.inline_data.data)} bytes {part.inline_data.mime_type}", flush=True)
+                        if part.inline_data and os.environ.get("SAVE_AUDIO"):
+                            with open(os.environ["SAVE_AUDIO"], "ab") as fh:
+                                fh.write(part.inline_data.data)
                 if os.environ.get("SHOW_ALL") and not (sc and sc.input_transcription):
                     print(f"{t:6.2f}s  MSG {str(msg.model_dump(exclude_none=True))[:200]}", flush=True)
                 if msg.go_away or (sc and sc.turn_complete and t > seconds):

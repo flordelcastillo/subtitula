@@ -37,6 +37,7 @@ class Hub:
         self.captions: dict[str, list[Caption]] = {}
         self.status: dict[str, dict] = {}
         self.subscribers: dict[str, set[asyncio.Queue]] = {}
+        self.listeners: dict[tuple[str, str], set[asyncio.Queue]] = {}  # (sala, idioma) -> audio
         self.workers: dict = {}  # sólo en modo todo-en-uno: sid -> SessionWorker
         config.data_dir.mkdir(parents=True, exist_ok=True)
         for sid in self.meta:
@@ -130,8 +131,20 @@ class Hub:
             "language": s.language,
             "state": st.get("state", "offline") if fresh else "offline",
             "viewers": len(self.subscribers.get(sid, ())),
+            "listeners": sum(len(qs) for (s, _), qs in self.listeners.items() if s == sid),
             "captions": len(self.captions.get(sid, [])),
+            # Idiomas en los que se puede escuchar la interpretación hablada (motor en vivo).
+            "speech": st.get("speech_langs", []) if fresh else [],
         }
+
+    def speech(self, sid: str, lang: str, pcm: bytes, rate: int) -> None:
+        """Reparte la interpretación hablada a quienes la escuchan en ese idioma."""
+        for queue in list(self.listeners.get((sid, lang), ())):
+            try:
+                queue.put_nowait((rate, pcm))
+            except asyncio.QueueFull:
+                # Un oyente con mala conexión pierde bloques; no frena a los demás.
+                pass
 
 
 class LocalPublisher:
@@ -139,6 +152,9 @@ class LocalPublisher:
 
     def __init__(self, hub: Hub):
         self.hub = hub
+
+    def speech(self, sid: str, lang: str, pcm: bytes, rate: int) -> None:
+        self.hub.speech(sid, lang, pcm, rate)
 
     async def caption(self, caption: Caption) -> int:
         return await self.hub.caption(caption)
@@ -298,7 +314,8 @@ def create_app(config: AppConfig, token: str = "", run_workers: bool = False) ->
                          "cost_usd": round(cost, 4),
                          "cost_usd_per_hour": round(cost / audio_h, 3) if st.get("audio_s", 0) > 60 else None})
         return {"event": config.event, "engine": config.engine, "sessions": rows,
-                "viewers": sum(r["viewers"] for r in rows), "time": time.time()}
+                "viewers": sum(r["viewers"] for r in rows), "listeners": sum(r["listeners"] for r in rows),
+                "time": time.time()}
 
     @app.post("/api/ingest/{sid}")
     async def ingest(sid: str, request: Request, authorization: str | None = Header(default=None)):
@@ -316,6 +333,41 @@ def create_app(config: AppConfig, token: str = "", run_workers: bool = False) ->
         body = await request.json()
         hub.set_glossary(sid, [str(t) for t in body.get("terms", [])])
         return {"glossary": hub.glossary[sid]}
+
+    @app.websocket("/api/sessions/{sid}/listen")
+    async def listen(ws: WebSocket, sid: str, lang: str = "es"):
+        """Interpretación hablada en vivo: PCM s16le mono; el primer mensaje trae la frecuencia."""
+        if sid not in hub.meta:
+            await ws.close(code=4404)
+            return
+        await ws.accept()
+        queue: asyncio.Queue = asyncio.Queue(maxsize=120)
+        key = (sid, lang)
+        hub.listeners.setdefault(key, set()).add(queue)
+        await ws.send_json({"session": sid, "lang": lang})
+
+        async def pump():
+            rate_sent = None
+            while True:
+                rate, pcm = await queue.get()
+                if rate != rate_sent:
+                    await ws.send_json({"rate": rate})
+                    rate_sent = rate
+                await ws.send_bytes(pcm)
+
+        async def watch():
+            # Detecta el cierre aunque no esté llegando audio (pausa larga, sala en silencio).
+            while True:
+                if (await ws.receive())["type"] == "websocket.disconnect":
+                    return
+
+        tasks = [asyncio.create_task(pump()), asyncio.create_task(watch())]
+        try:
+            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for task in tasks:
+                task.cancel()
+            hub.listeners.get(key, set()).discard(queue)
 
     @app.websocket("/api/sessions/{sid}/audio")
     async def browser_audio(ws: WebSocket, sid: str, token: str = ""):

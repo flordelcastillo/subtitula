@@ -141,6 +141,13 @@ class LiveTrack:
                 await self.worker.on_original(sc.input_transcription.text, sc.input_transcription.language_code)
             if sc.output_transcription and sc.output_transcription.text:
                 await self.worker.on_translation(self.target, sc.output_transcription.text)
+            # La sesión también devuelve la interpretación hablada: se reparte a quien la escucha.
+            if sc.model_turn:
+                for part in sc.model_turn.parts or []:
+                    blob = part.inline_data
+                    if blob and blob.data and (blob.mime_type or "").startswith("audio/pcm"):
+                        rate = re.search(r"rate=(\d+)", blob.mime_type or "")
+                        self.worker.on_speech(self.target, blob.data, int(rate.group(1)) if rate else 24000)
 
 
 class TrackBuilder:
@@ -315,6 +322,12 @@ class LiveSessionWorker(SessionWorker):
         async with self._lock:
             await self.builders[target].add(delta, target)
 
+    def on_speech(self, target: str, pcm: bytes, rate: int) -> None:
+        # Sólo el hub en el mismo proceso sabe repartir audio; un worker remoto publica texto.
+        speech = getattr(self.publisher, "speech", None)
+        if speech:
+            speech(self.session.id, target, pcm, rate)
+
     async def _close_idle_lines(self) -> None:
         while True:
             await asyncio.sleep(0.5)
@@ -350,6 +363,7 @@ class LiveSessionWorker(SessionWorker):
         data = super().status()
         data["live_sessions"] = f"{sum(t.connected for t in self.tracks)}/{len(self.tracks)}"
         data["reconnects"] = sum(t.reconnects for t in self.tracks)
+        data["speech_langs"] = [t.target for t in self.tracks] if hasattr(self.publisher, "speech") else []
         return data
 
 

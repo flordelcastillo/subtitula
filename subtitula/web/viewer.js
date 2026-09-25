@@ -80,6 +80,16 @@
       // En el motor en vivo cada idioma corta sus propias líneas: no hay un original línea a línea.
       $("#dual").hidden = lang === "original" || tracked;
       $("#theme").textContent = document.documentElement.dataset.theme === "light" ? "Oscuro" : "Claro";
+      const canListen = speechLangs.includes(lang);
+      $("#listen").hidden = !canListen;
+      $("#listen").setAttribute("aria-pressed", String(player.on));
+      $("#listen").textContent = player.on ? "Escuchando" : "Escuchar";
+      if (player.on && (!canListen || player.lang !== lang)) {
+        player.stop();
+        if (canListen) player.start(sid, lang).catch(() => {});
+        syncButtons();
+        return;
+      }
       renderDownloads();
     };
     langs.addEventListener("click", (e) => {
@@ -89,6 +99,62 @@
       else { lang = b.dataset.lang; store.set("lang", lang); }
       syncButtons();
       redraw();
+    });
+
+    // Interpretación hablada (motor en vivo): se escucha con auriculares mientras se leen los subtítulos.
+    let speechLangs = session.speech || [];
+    const player = {
+      on: false, lang: "", ws: null, ctx: null, next: 0, rate: 24000,
+      async start(id, code) {
+        this.on = true;
+        this.lang = code;
+        this.next = 0;
+        this.ctx = this.ctx || new AudioContext();
+        await this.ctx.resume();  // en iOS sólo arranca dentro de un toque del usuario
+        const proto = location.protocol === "https:" ? "wss" : "ws";
+        this.ws = new WebSocket(`${proto}://${location.host}/api/sessions/${encodeURIComponent(id)}/listen?lang=${encodeURIComponent(code)}`);
+        this.ws.binaryType = "arraybuffer";
+        this.ws.onmessage = (e) => {
+          if (typeof e.data === "string") { const m = JSON.parse(e.data); if (m.rate) this.rate = m.rate; return; }
+          this.play(new Int16Array(e.data));
+        };
+        this.ws.onclose = () => { if (this.on && this.lang === code) setTimeout(() => this.on && this.lang === code && this.start(id, code), 2000); };
+      },
+      play(pcm) {
+        const ctx = this.ctx;
+        const frame = Math.round(this.rate * 0.05);  // bloques de 50 ms
+        if (this.next < ctx.currentTime + 0.05) this.next = ctx.currentTime + 0.15;  // colchón chico al (re)arrancar
+        for (let i = 0; i < pcm.length; i += frame) {
+          const slice = pcm.subarray(i, i + frame);
+          let sum = 0;
+          for (let j = 0; j < slice.length; j++) sum += slice[j] * slice[j];
+          const rms = Math.sqrt(sum / slice.length) / 32768;
+          const ahead = this.next - ctx.currentTime;
+          // Si se va atrasando, se saltean los silencios; si se atrasó mucho, cualquier bloque.
+          if ((ahead > 0.4 && rms < 0.01) || ahead > 3) continue;
+          const buf = ctx.createBuffer(1, slice.length, this.rate);
+          const ch = buf.getChannelData(0);
+          for (let j = 0; j < slice.length; j++) ch[j] = slice[j] / 32768;
+          const src = ctx.createBufferSource();
+          src.buffer = buf;
+          src.connect(ctx.destination);
+          src.start(this.next);
+          this.next += buf.duration;
+        }
+      },
+      stop() {
+        this.on = false;
+        this.lang = "";
+        if (this.ws) { this.ws.onclose = null; this.ws.close(); this.ws = null; }
+        if (this.ctx) this.ctx.suspend();
+      },
+    };
+    $("#listen").addEventListener("click", async () => {
+      if (player.on) player.stop();
+      else {
+        try { await player.start(sid, lang); } catch { player.stop(); }
+      }
+      syncButtons();
     });
 
     $(".tools").addEventListener("click", (e) => {
@@ -195,7 +261,10 @@
     setInterval(async () => {
       try {
         const d = await api("/api/sessions");
-        stageState = d.sessions.find((s) => s.id === sid)?.state || "offline";
+        const info = d.sessions.find((s) => s.id === sid);
+        stageState = info?.state || "offline";
+        const langsNow = info?.speech || [];
+        if (langsNow.join() !== speechLangs.join()) { speechLangs = langsNow; syncButtons(); }
         setConn(es.readyState === EventSource.OPEN);
       } catch { /* la próxima vuelta reintenta */ }
     }, 10000);
