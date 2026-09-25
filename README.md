@@ -6,7 +6,17 @@ Cada escenario manda su audio (stream, micrófono, encoder o una pestaña del na
 
 Hecho para la [Vibeathon de Nerdearla 2026](https://nerdearla.devpost.com). Licencia Apache 2.0.
 
-> **English summary.** Subtitula is an open source live captioning and simultaneous interpretation system for multi-track conferences. Each stage streams its audio into one Gemini Live API session per target language (`gemini-3.5-live-translate-preview`): the original transcript and the translation arrive word by word while the speaker talks, typically 0.3 to 1 s after they pause. Each language is its own caption track, split into natural sentences of at most 84 characters. A lightweight hub fans captions out over Server-Sent Events to phones (pick stage + language), an OBS/vMix overlay and a production dashboard (audio level, latency p50/p90, errors, live sessions, measured cost). Transcripts export to SRT/VTT/TXT. Scale by running one worker container per stage. Fallback engines: chunked `gemini-3.5-transcribe` + Flash-Lite/Gemma translation, and fully local faster-whisper + Gemma via Ollama.
+> **English summary.** Subtitula is an open source live captioning and simultaneous interpretation system for multi-track conferences. Each stage streams its audio into one Gemini Live API session per target language (`gemini-3.5-live-translate-preview`): the original transcript and the translation arrive word by word while the speaker talks, typically 0.3 to 1 s after they pause. Each language is its own caption track, split into natural sentences of at most 84 characters. Phones can also play the spoken interpretation that Live Translate already generates (headphones on, no extra cost), and a "What did I miss?" button summarizes the last 5 minutes in the reader's language with Gemma. Secondary languages open a Live session only while someone reads or listens to them, and long silences are not streamed. Measured over 10 continuous minutes per talk: 0.34 s p50 / under 0.9 s p90 from the speaker's pause to the last translated word, with no accumulated drift ([evidence](docs/evidencia)). A lightweight hub fans captions out over Server-Sent Events to phones (pick stage + language), an OBS/vMix overlay and a production dashboard (audio level, latency p50/p90, errors, live sessions, real cost per room from official prices). Transcripts export to SRT/VTT/TXT. Scale by running one worker container per stage. Fallback engines: chunked `gemini-3.5-transcribe` + Flash-Lite/Gemma translation, and fully local faster-whisper + Gemma via Ollama.
+
+## Los cinco criterios, con evidencia
+
+| Criterio | Qué hace Subtitula | Evidencia |
+|---|---|---|
+| **Calidad** | Interpretación con Live Translate. El glosario de cada sala entra como vocabulario del reconocedor y, además, corrige la ortografía de nombres y términos en todas las pistas, incluida la traducción. Cada idioma arma sus propias líneas, cortadas por oración y con 84 caracteres como máximo (dos renglones de 42, la norma de subtitulado). Las preguntas del público en el idioma de destino se muestran tal cual | Ejemplo real: "if I pipe the audio out on the HDMI, are you able to hear it on the stream?" → "Si saco el audio por el HDMI, ¿puedes escucharlo en la transmisión?". Tests de glosario y de pistas en `tests/test_live.py` |
+| **Latencia** | El texto llega palabra por palabra mientras la persona habla. Desde que el orador hace una pausa hasta que llega la última palabra de la frase: **0,34 s en p50 y 0,7 a 0,9 s en p90 para el original, y 0,29 a 0,34 s en p50 y 0,76 a 0,89 s en p90 para la traducción**. En 10 minutos seguidos no hay atraso acumulado (el peor minuto dio 2,1 s de p90) | [`docs/evidencia/`](docs/evidencia), medido con [`scripts/drift_test.py`](scripts/drift_test.py) sobre 10 minutos de cada charla de ejemplo |
+| **Escalabilidad** | Un worker por sala sin estado compartido y un hub que sólo mueve texto. Los idiomas sin público no abren sesión y el audio en silencio no se manda. Costo real por sala en el panel | 4 sesiones Live simultáneas contra Gemini con 0 errores. Prueba de carga: 20 salas y 500 personas, 6 ms p50 del hub a la pantalla ([Escala](#escala)). US$ 2,2 por idioma y por hora ([Costos](#costos)) |
+| **Despliegue y operación** | `pip install`, una clave en `.env` y `subtitula serve`, o Docker Compose con un contenedor por sala. La sala puede mandar el audio desde un navegador, sin instalar nada. Panel con vúmetro, demoras p50/p90, errores, sesiones, costo, QR y glosario editable en vivo. Overlay para OBS/vMix, `live.txt` para títulos y fondo de croma | Secciones [Operación](#operación-durante-el-evento) y [Qué pasa si…](#qué-pasa-si) |
+| **Innovación** | **Escuchar la interpretación** con auriculares desde el celular (la voz que Live Translate ya genera). **"¿Qué me perdí?"**: resumen de los últimos 5 minutos en tu idioma, con Gemma. Idiomas bajo demanda. Tres motores: en vivo, por tramos y 100% local con faster-whisper y Gemma | Capturas y video demo |
 
 ## Qué resuelve
 
@@ -37,8 +47,9 @@ Abrí <http://localhost:8000>. Hay dos salas de ejemplo, en loop, con fragmentos
 
 | Página | Para quién |
 |---|---|
-| `/` y `/s/<sala>?lang=es` | Público: elige sala e idioma, cambia el tamaño de letra, tema claro u oscuro, descarga la charla |
-| `/overlay/<sala>?lang=es` | Fuente de navegador en OBS o vMix (fondo transparente) |
+| `/` y `/s/<sala>?lang=es` | Público: elige sala e idioma, lee los subtítulos, **escucha la interpretación** con auriculares, pide **"¿Qué me perdí?"**, cambia el tamaño de letra y el tema, y descarga la charla |
+| `/overlay/<sala>?lang=es` | Fuente de navegador en OBS o vMix (fondo transparente, o `&bg=00b140` para croma) |
+| `/api/sessions/<sala>/live.txt?lang=es` | Las últimas dos líneas en texto plano, como fuente de datos de un título de vMix o CasparCG |
 | `/admin` | Producción: estado, audio, latencia, errores, público, costo, QR y glosario por sala |
 | `/enviar/<sala>` | La compu de la sala manda el audio desde el navegador |
 
@@ -100,7 +111,7 @@ Tres cosas bajan la cuenta del motor en vivo sin tocar la calidad:
 - **Una pista por idioma.** El original y cada traducción arman sus propias líneas: se cortan al terminar una oración (aunque el fin de oración venga en medio de un fragmento), en una coma si la línea ya es larga, a los 84 caracteres (dos renglones de 42, la norma de subtitulado) o tras 2 s sin palabras nuevas. Así el español se lee en frases de español y no como inglés partido en los lugares del inglés. La línea abierta crece en pantalla palabra por palabra.
 - **Preguntas en otro idioma.** Con `echo_target_language`, si alguien habla directamente en el idioma de destino (por ejemplo, una pregunta del público en español durante una charla en inglés), la sesión la repite tal cual en lugar de dejar un hueco.
 - **Sesiones largas.** La sesión usa compresión de contexto con ventana deslizante para aguantar una charla entera y, si el servidor la corta, se reabre retomando el contexto (session resumption).
-- **Demora medida.** El panel muestra cuánto tarda en llegar la última palabra de una frase desde que el orador hace una pausa. En las pruebas con las dos charlas de ejemplo: 0,3 a 0,5 s en p50 y 0,6 a 0,8 s en p90 para el original, y 0,3 a 0,4 s en p50 y 0,9 a 1,1 s en p90 para la traducción. Al arrancar, la primera frase tarda unos 3 s.
+- **Demora medida.** El panel muestra cuánto tarda en llegar la última palabra de una frase desde que el orador hace una pausa. Se mide así porque no necesita marcas de tiempo externas y se puede ver en vivo durante el evento. En 10 minutos seguidos de cada charla de ejemplo: original 0,34 s en p50 y 0,7 a 0,9 s en p90; traducción 0,29 a 0,34 s en p50 y 0,76 a 0,89 s en p90, sin atraso acumulado minuto a minuto ([`docs/evidencia/`](docs/evidencia)). Al arrancar la sesión, la primera frase tarda unos 3 s.
 
 Los motores siguientes quedan como alternativa (`--engine gemini`, `--engine local`).
 

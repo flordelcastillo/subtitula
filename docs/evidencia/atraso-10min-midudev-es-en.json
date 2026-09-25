@@ -1,0 +1,105 @@
+{
+  "archivo": "Miguel Ángel Durán, Nerdearla 2025 (youtube.com/watch?v=zynI57qVj-U), minutos 10 a 20",
+  "minutos": 11,
+  "lineas_por_pista": {
+    "es": 165,
+    "en": 163
+  },
+  "original_p50_ms": 336,
+  "original_p90_ms": 688,
+  "traduccion_p50_ms": 285,
+  "traduccion_p90_ms": 755,
+  "errores": 0,
+  "reconexiones": 1,
+  "costo_usd": 0.372,
+  "por_minuto": [
+    {
+      "minuto": 1,
+      "original_p50_ms": 809,
+      "original_p90_ms": 1330,
+      "traduccion_p50_ms": 679,
+      "traduccion_p90_ms": 1450,
+      "frases_medidas": 7
+    },
+    {
+      "minuto": 2,
+      "original_p50_ms": 583,
+      "original_p90_ms": 1210,
+      "traduccion_p50_ms": 310,
+      "traduccion_p90_ms": 868,
+      "frases_medidas": 18
+    },
+    {
+      "minuto": 3,
+      "original_p50_ms": 171,
+      "original_p90_ms": 391,
+      "traduccion_p50_ms": 396,
+      "traduccion_p90_ms": 417,
+      "frases_medidas": 13
+    },
+    {
+      "minuto": 4,
+      "original_p50_ms": 457,
+      "original_p90_ms": 903,
+      "traduccion_p50_ms": 470,
+      "traduccion_p90_ms": 1161,
+      "frases_medidas": 19
+    },
+    {
+      "minuto": 5,
+      "original_p50_ms": 353,
+      "original_p90_ms": 988,
+      "traduccion_p50_ms": 321,
+      "traduccion_p90_ms": 639,
+      "frases_medidas": 21
+    },
+    {
+      "minuto": 6,
+      "original_p50_ms": 354,
+      "original_p90_ms": 1764,
+      "traduccion_p50_ms": 202,
+      "traduccion_p90_ms": 1940,
+      "frases_medidas": 11
+    },
+    {
+      "minuto": 7,
+      "original_p50_ms": 336,
+      "original_p90_ms": 402,
+      "traduccion_p50_ms": 256,
+      "traduccion_p90_ms": 590,
+      "frases_medidas": 12
+    },
+    {
+      "minuto": 8,
+      "original_p50_ms": 286,
+      "original_p90_ms": 830,
+      "traduccion_p50_ms": 317,
+      "traduccion_p90_ms": 651,
+      "frases_medidas": 12
+    },
+    {
+      "minuto": 9,
+      "original_p50_ms": 222,
+      "original_p90_ms": 441,
+      "traduccion_p50_ms": 212,
+      "traduccion_p90_ms": 570,
+      "frases_medidas": 14
+    },
+    {
+      "minuto": 10,
+      "original_p50_ms": 267,
+      "original_p90_ms": 382,
+      "traduccion_p50_ms": 66,
+      "traduccion_p90_ms": 172,
+      "frases_medidas": 16
+    },
+    {
+      "minuto": 11,
+      "original_p50_ms": null,
+      "original_p90_ms": null,
+      "traduccion_p50_ms": 340,
+      "traduccion_p90_ms": 340,
+      "frases_medidas": 2
+    }
+  ]
+}
