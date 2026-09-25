@@ -1,0 +1,362 @@
+"""Motor de interpretación simultánea con la Gemini Live API (`gemini-live`).
+
+Cada sala abre una sesión de `gemini-3.5-live-translate-preview` por idioma de destino y le
+manda el audio en vivo. Cada sesión devuelve, palabra por palabra, la transcripción del original
+y la traducción. Con eso se arman líneas de subtítulo que crecen en pantalla mientras la persona
+habla, en lugar de esperar a que termine cada tramo.
+
+Una sesión abierta no consume un pedido por tramo, así que no choca con el límite de pedidos
+por minuto. Si una sesión se corta, se reabre retomando el contexto (session resumption).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+import re
+import time
+from collections import deque
+
+from google import genai
+from google.genai import types
+
+from .captions import Caption
+from .engines import Engine, EngineContext
+from .worker import SessionWorker
+
+log = logging.getLogger(__name__)
+
+DEFAULT_LIVE_MODEL = "gemini-3.5-live-translate-preview"
+SENTENCE_END = re.compile(r"[.?!…。]\s*$")
+SENTENCE_SPLIT = re.compile(r"(?<=[.?!…。])(?=\s)")
+CLAUSE_END = re.compile(r"[,;:]\s*$")
+MAX_LINE_CHARS = 84  # dos renglones de 42, la norma de subtitulado
+LINE_GAP_S = 2.0  # sin palabras nuevas durante este tiempo, la línea se cierra
+
+
+class LiveEngine(Engine):
+    """Marcador para elegir el worker en vivo; la conexión la maneja LiveTrack."""
+
+    name = "gemini-live"
+
+    def __init__(self):
+        key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        if not key:
+            raise RuntimeError("Falta GEMINI_API_KEY (creala en https://aistudio.google.com/apikey)")
+        self.client = genai.Client(api_key=key)
+        self.model = os.environ.get("SUBTITULA_LIVE_MODEL", DEFAULT_LIVE_MODEL)
+
+    async def process(self, segment, ctx: EngineContext):  # pragma: no cover - no se usa por tramo
+        raise NotImplementedError("gemini-live trabaja en streaming, no por tramos")
+
+
+class LiveTrack:
+    """Una sesión Live hacia un idioma de destino. Reconecta sola si se corta."""
+
+    def __init__(self, worker: "LiveSessionWorker", target: str, primary: bool):
+        self.worker = worker
+        self.target = target
+        self.primary = primary  # sólo una sesión aporta el texto original
+        self.queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=100)
+        self.handle: str | None = None
+        self.connected = False
+        self.reconnects = 0
+
+    def put(self, pcm: bytes) -> None:
+        try:
+            self.queue.put_nowait(pcm)
+        except asyncio.QueueFull:
+            # Si la sesión se atrasa (reconectando), se descarta audio viejo: el vivo manda.
+            self.queue.get_nowait()
+            self.queue.put_nowait(pcm)
+
+    def _config(self) -> types.LiveConnectConfig:
+        session = self.worker.session
+        asr = types.AudioTranscriptionConfig(
+            custom_vocabulary=self.worker.glossary[:100] or None,
+            language_codes=[session.language] if session.language not in ("", "auto") else None,
+        )
+        return types.LiveConnectConfig(
+            response_modalities=[types.Modality.AUDIO],
+            input_audio_transcription=asr,
+            output_audio_transcription=types.AudioTranscriptionConfig(),
+            # Si alguien habla directamente en el idioma de destino (preguntas del público), se repite tal cual.
+            translation_config=types.TranslationConfig(target_language_code=self.target, echo_target_language=True),
+            session_resumption=types.SessionResumptionConfig(handle=self.handle),
+            context_window_compression=types.ContextWindowCompressionConfig(sliding_window=types.SlidingWindow()),
+        )
+
+    async def run(self) -> None:
+        engine: LiveEngine = self.worker.engine  # type: ignore[assignment]
+        backoff = 1.0
+        while not self.worker.stopping:
+            try:
+                async with engine.client.aio.live.connect(model=engine.model, config=self._config()) as session:
+                    self.connected = True
+                    backoff = 1.0
+                    sender = asyncio.create_task(self._send(session))
+                    try:
+                        await self._receive(session)
+                    finally:
+                        sender.cancel()
+                        self.connected = False
+                if self.worker.stopping:
+                    return
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - una sesión caída no tira abajo la sala
+                self.connected = False
+                self.worker.errors += 1
+                self.worker.last_error = f"sesión {self.target}: {type(exc).__name__}: {str(exc)[:200]}"
+                log.warning("[%s/%s] sesión Live caída: %s", self.worker.session.id, self.target, exc)
+            if self.worker.stopping:
+                return
+            self.reconnects += 1
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, 15)
+
+    async def _send(self, session) -> None:
+        while True:
+            pcm = await self.queue.get()
+            if pcm is None:
+                await session.send_realtime_input(audio_stream_end=True)
+                return
+            await session.send_realtime_input(audio=types.Blob(data=pcm, mime_type="audio/pcm;rate=16000"))
+
+    async def _receive(self, session) -> None:
+        async for msg in session.receive():
+            if msg.session_resumption_update and msg.session_resumption_update.new_handle:
+                self.handle = msg.session_resumption_update.new_handle
+            if msg.usage_metadata:
+                self.worker.input_tokens += msg.usage_metadata.prompt_token_count or 0
+                self.worker.output_tokens += msg.usage_metadata.response_token_count or 0
+            if msg.go_away:
+                log.info("[%s/%s] el servidor pidió reconectar", self.worker.session.id, self.target)
+                return
+            sc = msg.server_content
+            if not sc:
+                continue
+            if self.primary and sc.input_transcription and sc.input_transcription.text:
+                await self.worker.on_original(sc.input_transcription.text, sc.input_transcription.language_code)
+            if sc.output_transcription and sc.output_transcription.text:
+                await self.worker.on_translation(self.target, sc.output_transcription.text)
+
+
+class TrackBuilder:
+    """Arma las líneas de una pista (el original o un idioma de destino) a partir de fragmentos.
+
+    Una línea se cierra al terminar una oración, en una coma si ya es larga, al llegar a 84
+    caracteres o tras una pausa. Cada idioma corta con su propia puntuación: así el español se lee
+    como español y no como inglés partido en los lugares del inglés.
+    """
+
+    def __init__(self, worker: "LiveSessionWorker", track: str, original: bool):
+        self.worker = worker
+        self.track = track
+        self.original = original
+        self.current: Caption | None = None
+        self.first_at = 0.0  # cuándo llegó el primer fragmento de la línea abierta
+        self.last_at = 0.0
+        self.last_end = 0.0
+
+    async def add(self, delta: str, lang: str) -> None:
+        # Un fragmento puede traer el final de una oración y el comienzo de otra: se corta ahí.
+        pieces = [p for p in SENTENCE_SPLIT.split(delta) if p]
+        for i, piece in enumerate(pieces):
+            if i > 0 and not piece[:1].isspace():
+                piece = " " + piece
+            if self.current is not None and len(self.current.text) + len(piece) > MAX_LINE_CHARS:
+                self.close()
+            await self._add(piece, lang)
+
+    async def _add(self, delta: str, lang: str) -> None:
+        w = self.worker
+        now = time.time()
+        if self.current is None:
+            w.seq += 1
+            if self.original:
+                w.captions += 1
+            # El texto llega ~2 s detrás de la voz: el subtítulo empieza antes que el evento,
+            # pero nunca antes de que termine la línea anterior de la misma pista.
+            start = max(self.last_end, w._audio_pos() - 2.5)
+            self.current = Caption(session=w.session.id, seq=w.seq, start=start, end=w._audio_pos(),
+                                   lang=lang, text="", created_at=now, track=self.track, original=self.original)
+            self.first_at = now
+        cap = self.current
+        cap.text = _join(cap.text, delta)
+        cap.end = w._audio_pos()
+        self.last_at = now
+        size = len(cap.text)
+        done = ((SENTENCE_END.search(cap.text) and size >= 15) or (CLAUSE_END.search(cap.text) and size >= 60)
+                or size >= MAX_LINE_CHARS)
+        await w._publish(cap)
+        if done:
+            self.close()
+
+    def close(self) -> None:
+        if self.current is not None:
+            lag = self.worker._pause_lag(self.last_at)
+            if lag:
+                self.current.latency_ms = lag
+                (self.worker.latencies if self.original else self.worker.tr_latencies).append(lag)
+            self.last_end = self.current.end
+            self.current = None
+
+    def idle(self, now: float) -> bool:
+        return self.current is not None and now - self.last_at > LINE_GAP_S
+
+
+class LiveSessionWorker(SessionWorker):
+    """Worker de una sala con la Live API: el audio va directo a las sesiones, sin tramos."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # En vivo el audio siempre va a velocidad real: la Live API espera una charla, no un archivo.
+        self.session.realtime = True
+        self.backpressure = False
+        self.source_lang = self.session.language if self.session.language not in ("", "auto") else ""
+        targets = [lang for lang in self.languages if lang != self.source_lang] or self.languages[:1]
+        self.tracks = [LiveTrack(self, lang, primary=i == 0) for i, lang in enumerate(targets)]
+        # Con idioma conocido, la pista original es la de ese idioma (quien elige "en" en una charla
+        # en inglés lee el original); con "auto" es una pista aparte.
+        self.original = TrackBuilder(self, self.source_lang or "original", original=True)
+        self.builders = {t.target: TrackBuilder(self, t.target, original=False) for t in self.tracks}
+        self.onsets: deque[float] = deque(maxlen=40)
+        self.offsets: deque[float] = deque(maxlen=40)
+        self._quiet_chunks = 0
+        self.stopping = False
+        self._lock = asyncio.Lock()
+
+    # -- audio ---------------------------------------------------------------------------------
+
+    def _on_audio(self, pcm: bytes) -> None:
+        super()._on_audio(pcm)
+        # Pausas y reanudaciones del orador (≥300 ms de silencio) para medir la demora del texto.
+        now = time.time()
+        if self.level_dbfs < -45:
+            self._quiet_chunks += 1
+            if self._quiet_chunks == 3:
+                self.offsets.append(now - 0.2)
+        else:
+            if self._quiet_chunks >= 3:
+                self.onsets.append(now)
+            self._quiet_chunks = 0
+
+    async def run(self) -> None:
+        heartbeat = asyncio.create_task(self._heartbeat())
+        closer = asyncio.create_task(self._close_idle_lines())
+        runners = [asyncio.create_task(t.run()) for t in self.tracks]
+        backoff = 1.0
+        try:
+            while not self._stop.is_set():
+                self.state = "connecting"
+                try:
+                    async for pcm in self._source():
+                        if self.state != "live":
+                            self.state = "live"
+                            backoff = 1.0
+                        self._on_audio(pcm)
+                        for track in self.tracks:
+                            track.put(pcm)
+                        if self._stop.is_set():
+                            break
+                    if not self._is_live_source():
+                        self.state = "ended"
+                        break
+                    raise RuntimeError("la fuente se cortó")
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:  # noqa: BLE001
+                    self.errors += 1
+                    self.last_error = str(exc)[:300]
+                    self.state = "reconnecting"
+                    log.warning("[%s] fuente caída: %s", self.session.id, exc)
+                    await self._publish_status()
+                    try:
+                        await asyncio.wait_for(self._stop.wait(), timeout=backoff)
+                    except asyncio.TimeoutError:
+                        pass
+                    backoff = min(backoff * 2, 30)
+        finally:
+            # Se deja terminar lo que las sesiones ya estaban traduciendo.
+            for track in self.tracks:
+                track.put(None)
+            if self.state == "ended":
+                await asyncio.sleep(4)
+            self.stopping = True
+            for task in runners:
+                task.cancel()
+            await asyncio.gather(*runners, return_exceptions=True)
+            closer.cancel()
+            heartbeat.cancel()
+            if self.state != "ended":
+                self.state = "stopped"
+            await self._publish_status()
+
+    def _is_live_source(self) -> bool:
+        from .audio import is_live
+
+        return is_live(self.session.source) and not self._source_factory
+
+    # -- pistas --------------------------------------------------------------------------------
+
+    def _audio_pos(self) -> float:
+        return round(self.audio_seconds, 2)
+
+    async def on_original(self, delta: str, lang_code: str | None) -> None:
+        async with self._lock:
+            lang = self.source_lang or (lang_code or "und")[:2].lower()
+            await self.original.add(delta, lang)
+            if self.original.current is not None:
+                self.previous.append(self.original.current.text)
+
+    async def on_translation(self, target: str, delta: str) -> None:
+        async with self._lock:
+            await self.builders[target].add(delta, target)
+
+    async def _close_idle_lines(self) -> None:
+        while True:
+            await asyncio.sleep(0.5)
+            async with self._lock:
+                now = time.time()
+                for builder in (self.original, *self.builders.values()):
+                    if builder.idle(now):
+                        builder.close()
+
+    def _pause_lag(self, last_at: float) -> int:
+        """Demora entre que el orador se calla y que llega la última palabra de esa frase.
+
+        Sólo se mide si hubo una pausa en los 4 s previos y el orador no volvió a hablar antes de
+        que llegara el texto (si no, no se sabe a qué palabras corresponde)."""
+        pauses = [t for t in self.offsets if last_at - 4 <= t <= last_at]
+        if not pauses:
+            return 0
+        pause = pauses[-1]
+        if any(pause < t < last_at - 0.2 for t in self.onsets):
+            return 0
+        return int((last_at - pause) * 1000)
+
+    async def _publish(self, cap: Caption) -> None:
+        assigned = await self.publisher.caption(cap)
+        if assigned and assigned != cap.seq:
+            cap.seq = assigned
+
+    def set_glossary(self, terms: list[str]) -> None:
+        # Las sesiones Live toman el vocabulario al conectar: el cambio aplica en la próxima reconexión.
+        super().set_glossary(terms)
+
+    def status(self) -> dict:
+        data = super().status()
+        data["live_sessions"] = f"{sum(t.connected for t in self.tracks)}/{len(self.tracks)}"
+        data["reconnects"] = sum(t.reconnects for t in self.tracks)
+        return data
+
+
+def _join(text: str, delta: str) -> str:
+    if not text:
+        return delta.strip()
+    # Los fragmentos suelen traer su propio espacio inicial; si no, se agrega salvo ante puntuación.
+    if delta[:1].isspace() or text[-1:].isspace() or delta[:1] in ",.;:?!…)":
+        return (text + delta).replace("  ", " ")
+    return f"{text} {delta}"

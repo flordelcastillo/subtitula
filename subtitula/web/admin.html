@@ -60,7 +60,7 @@
       <tbody id="rows"></tbody>
     </table>
   </div>
-  <p class="sub">La latencia se mide desde que termina el tramo de audio hasta que el original está publicado; la de traducción, hasta que llega la versión traducida. El costo sale de los tokens que informa el modelo, con los precios de <code>SUBTITULA_PRICE_*</code>.</p>
+  <p class="sub">Con el motor en vivo, la demora va desde que el orador hace una pausa hasta que llega la última palabra de esa frase. Con el motor por tramos, desde que termina el tramo de audio hasta que se publica. El costo sale de los tokens que informa el modelo, con los precios de <code>SUBTITULA_PRICE_*</code>.</p>
 </div>
 <div class="qr" id="qr" hidden><figure><img alt=""><figcaption></figcaption></figure></div>
 
@@ -90,7 +90,7 @@
     ].join("");
     return `<tr class="${alert ? "alert" : ""}" data-id="${esc(s.id)}">
       <td><div class="name">${esc(s.name)}</div><div class="sub">${esc(s.id)}${s.source ? `, ${esc(s.source)}` : ""}</div><div class="links">${links}</div></td>
-      <td><span class="state"><span class="dot ${dotFor(s.state)}"></span>${STATE[s.state] || esc(s.state)}</span><div class="sub">${s.engine ? `motor ${esc(s.engine)}` : ""}</div></td>
+      <td><span class="state"><span class="dot ${dotFor(s.state)}"></span>${STATE[s.state] || esc(s.state)}</span><div class="sub">${s.engine ? `motor ${esc(s.engine)}` : ""}</div>${s.live_sessions ? `<div class="sub${s.live_sessions.split("/")[0] !== s.live_sessions.split("/")[1] ? " bad" : ""}">sesiones Live ${esc(s.live_sessions)}${s.reconnects ? `, ${s.reconnects} reconexiones` : ""}</div>` : ""}</td>
       <td>${s.level_dbfs != null ? `${s.level_dbfs} dBFS` : "–"}<div class="meter"><i style="width:${level}%"></i></div>
         ${silent ? `<div class="bad">${Math.round(s.silent_for_s)} s sin audio</div>` : ""}</td>
       <td class="num">${ms(s.latency_p50_ms)} / ${ms(s.latency_p90_ms)}

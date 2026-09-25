@@ -77,7 +77,8 @@
     const syncButtons = () => {
       langs.querySelectorAll("[data-lang]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.lang === lang)));
       $("#dual").setAttribute("aria-pressed", String(dual));
-      $("#dual").hidden = lang === "original";
+      // En el motor en vivo cada idioma corta sus propias líneas: no hay un original línea a línea.
+      $("#dual").hidden = lang === "original" || tracked;
       $("#theme").textContent = document.documentElement.dataset.theme === "light" ? "Oscuro" : "Claro";
       renderDownloads();
     };
@@ -113,18 +114,22 @@
     }
 
     // Subtítulos
-    const textOf = (c) => (lang === "original" || lang === c.lang ? c.text : (c.tr?.[lang] || c.text));
+    // Con el motor en vivo cada idioma es una pista propia (c.track); se muestra sólo la elegida.
+    let tracked = false;
+    const visible = (c) => !c.track || (lang === "original" ? c.original : c.track === lang);
+    const textOf = (c) => (c.track || lang === "original" || lang === c.lang ? c.text : (c.tr?.[lang] || c.text));
     // Mientras la traducción no llega se muestra el original atenuado, para no dejar el hueco.
-    const waiting = (c) => lang !== "original" && lang !== c.lang && !c.tr?.[lang] && c.pending;
+    const waiting = (c) => !c.track && lang !== "original" && lang !== c.lang && !c.tr?.[lang] && c.pending;
     function paint(node, c) {
       const last = node.classList.contains("last"), recent = node.classList.contains("recent");
       node.className = "cap" + (waiting(c) ? " pending" : "") + (last ? " last" : "") + (recent ? " recent" : "");
-      node.lang = lang === "original" || waiting(c) ? c.lang : lang;
+      node.lang = c.track ? c.lang : lang === "original" || waiting(c) ? c.lang : lang;
+      node.dataset.seq = c.seq;
       node.innerHTML = lineHtml(c);
     }
     const lineHtml = (c) => {
       const main = textOf(c);
-      const showSrc = dual && lang !== "original" && c.lang !== lang && main !== c.text;
+      const showSrc = !c.track && dual && lang !== "original" && c.lang !== lang && main !== c.text;
       return esc(main) + (showSrc ? `<span class="src" lang="${esc(c.lang)}">${esc(c.text)}</span>` : "");
     };
     const following = () => window.innerHeight + window.scrollY >= document.body.scrollHeight - 80;
@@ -138,30 +143,36 @@
       });
     }
     function redraw() {
-      if (caps.length) {
-        main.replaceChildren(...caps.map((c) => { const p = document.createElement("p"); paint(p, c); return p; }));
+      const shown = caps.filter(visible);
+      if (shown.length) {
+        main.replaceChildren(...shown.map((c) => { const p = document.createElement("p"); paint(p, c); return p; }));
+      } else if (caps.length) {
+        main.innerHTML = `<p class="waiting">Todavía no hay texto en este idioma. Aparece apenas llegue la primera frase.</p>`;
       }
       mark();
       scrollToEnd();
     }
     function add(c) {
-      // Una traducción que llega después reemplaza la línea que ya estaba en pantalla.
+      if (c.track && !tracked) { tracked = true; syncButtons(); }
+      // Una línea que crece (motor en vivo) o una traducción que llega después reemplaza la que ya estaba.
       const idx = caps.findIndex((x) => x.seq === c.seq);
-      if (idx >= 0) {
-        caps[idx] = c;
-        const node = main.querySelectorAll(".cap")[idx];
-        if (node) paint(node, c);
-        return;
+      if (idx >= 0) caps[idx] = c;
+      else {
+        if (caps.length && c.seq < caps[caps.length - 1].seq) return;
+        caps.push(c);
+        // Con charlas de una hora el DOM no necesita guardar todo: la descarga tiene el texto completo.
+        if (caps.length > 1200) caps.shift();
       }
-      if (caps.length && c.seq < caps[caps.length - 1].seq) return;
+      if (!visible(c)) return;
+      const node = main.querySelector(`.cap[data-seq="${c.seq}"]`);
+      if (node) { paint(node, c); return; }
       const stick = following();
-      caps.push(c);
       main.querySelector(".waiting")?.remove();
       const p = document.createElement("p");
       paint(p, c);
       main.append(p);
-      // Con charlas de una hora el DOM no necesita guardar todo: la descarga tiene el texto completo.
-      if (caps.length > 400) { caps.shift(); main.querySelector(".cap")?.remove(); }
+      const nodes = main.querySelectorAll(".cap");
+      if (nodes.length > 400) nodes[0].remove();
       mark();
       if (stick) scrollToEnd(); else $("#jump").hidden = false;
     }

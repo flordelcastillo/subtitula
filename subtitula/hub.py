@@ -162,14 +162,14 @@ def create_app(config: AppConfig, token: str = "", run_workers: bool = False) ->
     async def lifespan(app: FastAPI):
         if run_workers:
             from .engines import create_engine
-            from .worker import SessionWorker
+            from .worker import worker_class
 
             publisher = LocalPublisher(hub)
             for s in config.sessions:
                 if not s.source:
                     continue
                 engine = create_engine(config.engine)
-                worker = SessionWorker(s, engine, publisher, config.languages, hub.glossary[s.id])
+                worker = worker_class(engine)(s, engine, publisher, config.languages, hub.glossary[s.id])
                 hub.workers[s.id] = worker
                 tasks.append(asyncio.create_task(worker.run(), name=f"worker-{s.id}"))
             log.info("%d escenarios en marcha con el motor %s", len(tasks), config.engine)

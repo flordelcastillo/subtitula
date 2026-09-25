@@ -40,7 +40,7 @@ class AppConfig:
     languages: list[str] = field(default_factory=lambda: ["es", "en"])
     sessions: list[SessionConfig] = field(default_factory=list)
     glossary: list[str] = field(default_factory=list)
-    engine: str = "gemini"
+    engine: str = "gemini-live"
     data_dir: Path = Path("data")
 
     def session(self, sid: str) -> SessionConfig | None:
@@ -75,6 +75,6 @@ def load_config(sessions_path: str | Path = "config/sessions.yaml",
         languages=languages,
         sessions=sessions,
         glossary=load_glossary(Path(glossary_path)),
-        engine=os.environ.get("SUBTITULA_ENGINE", raw.get("engine", "gemini")),
+        engine=os.environ.get("SUBTITULA_ENGINE", raw.get("engine", "gemini-live")),
         data_dir=Path(os.environ.get("SUBTITULA_DATA", raw.get("data_dir", "data"))),
     )

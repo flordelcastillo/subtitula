@@ -61,10 +61,13 @@ def create_engine(name: str) -> Engine:
     if name == "gemini":
         from .gemini import GeminiEngine
         return GeminiEngine()
+    if name == "gemini-live":
+        from ..live import LiveEngine
+        return LiveEngine()
     if name == "local":
         from .local import LocalEngine
         return LocalEngine()
     if name == "fake":
         from .fake import FakeEngine
         return FakeEngine()
-    raise ValueError(f"Motor desconocido: {name} (opciones: gemini, local, fake)")
+    raise ValueError(f"Motor desconocido: {name} (opciones: gemini-live, gemini, local, fake)")

@@ -2,8 +2,9 @@
 event: Nerdearla 2026
 # Idiomas de salida. La vista de audiencia ofrece además el "original" de cada tramo.
 languages: [es, en, pt]
-# gemini (por defecto), local (faster-whisper + Gemma por Ollama) o fake (pruebas sin modelo)
-engine: gemini
+# gemini-live (interpretación simultánea con la Live API, por defecto), gemini (por tramos),
+# local (faster-whisper + Gemma por Ollama) o fake (pruebas sin modelo)
+engine: gemini-live
 data_dir: data
 
 sessions:

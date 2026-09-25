@@ -303,3 +303,11 @@ class SessionWorker:
         while True:
             await self._publish_status()
             await asyncio.sleep(2)
+
+
+def worker_class(engine: Engine) -> type[SessionWorker]:
+    """El motor en vivo necesita su propio worker (streaming en lugar de tramos)."""
+    if engine.name == "gemini-live":
+        from .live import LiveSessionWorker
+        return LiveSessionWorker
+    return SessionWorker

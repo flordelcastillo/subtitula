@@ -19,9 +19,20 @@ class Caption:
     created_at: float = 0.0
     pending: bool = False  # la traducción todavía no llegó (motor en dos etapas)
     tr_latency_ms: int = 0  # desde que terminó el audio hasta que llegó la traducción
+    # Motor en vivo: cada idioma es una pista con sus propias líneas. `track` es el idioma de la
+    # pista y `original` marca la del idioma hablado. Vacío: una línea con todas las traducciones.
+    track: str = ""
+    original: bool = False
+
+    def visible_in(self, lang: str) -> bool:
+        if not self.track:
+            return True
+        if lang in ("", "original"):
+            return self.original
+        return self.track == lang
 
     def in_lang(self, lang: str) -> str:
-        if lang in ("", "original", self.lang):
+        if self.track or lang in ("", "original", self.lang):
             return self.text
         return self.tr.get(lang) or self.text
 
@@ -47,7 +58,12 @@ def _wrap(text: str, width: int = 42) -> str:
     return "\n".join(textwrap.wrap(text, width=width)) or text
 
 
+def _visible(captions: list[Caption], lang: str) -> list[Caption]:
+    return [c for c in captions if c.visible_in(lang)]
+
+
 def to_srt(captions: list[Caption], lang: str = "original") -> str:
+    captions = _visible(captions, lang)
     blocks = []
     for i, cap in enumerate(c for c in captions if c.in_lang(lang).strip()):
         blocks.append(f"{i + 1}\n{_ts(cap.start, ',')} --> {_ts(cap.end, ',')}\n{_wrap(cap.in_lang(lang))}\n")
@@ -56,7 +72,7 @@ def to_srt(captions: list[Caption], lang: str = "original") -> str:
 
 def to_vtt(captions: list[Caption], lang: str = "original") -> str:
     blocks = ["WEBVTT\n"]
-    for cap in captions:
+    for cap in _visible(captions, lang):
         text = cap.in_lang(lang).strip()
         if text:
             blocks.append(f"{_ts(cap.start, '.')} --> {_ts(cap.end, '.')}\n{_wrap(text)}\n")
@@ -65,7 +81,7 @@ def to_vtt(captions: list[Caption], lang: str = "original") -> str:
 
 def to_txt(captions: list[Caption], lang: str = "original") -> str:
     paragraphs, current, last_end = [], [], None
-    for cap in captions:
+    for cap in _visible(captions, lang):
         text = cap.in_lang(lang).strip()
         if not text:
             continue
