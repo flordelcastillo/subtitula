@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#121a30">
+<title>Subtitula, demo</title>
+<meta name="description" content="Repetición de una corrida real de Subtitula: subtítulos e interpretación simultánea en vivo con la Gemini Live API.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:,">
+<style>
+  html, body { height: 100%; }
+  body { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+  header, .controls, footer { flex: none; }
+  header { padding: 1rem 1rem .4rem; max-width: 52rem; width: 100%; margin: 0 auto; }
+  header h1 { margin: 0; font-size: 1.6rem; }
+  header p { margin: .35rem 0 0; color: var(--muted); font-size: .9rem; max-width: 44rem; }
+  @media (max-width: 40rem) { header p span[lang="en"] { display: none; } .cap { font-size: 1.45rem; } }
+  header a { color: var(--fg); }
+  .controls { max-width: 52rem; width: 100%; margin: 0 auto; padding: .4rem 1rem; display: grid; gap: .6rem; }
+  .row { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; }
+  .row .label { color: var(--muted); font-size: .9rem; margin-right: .2rem; }
+  .play { font-size: 1.1rem; padding: .55rem 1.3rem; }
+  main.captions { flex: 1 1 auto; min-height: 0; overflow: hidden; width: 100%; max-width: 52rem; margin: 0 auto;
+    padding: .5rem 1rem 1rem; display: flex; flex-direction: column; justify-content: flex-end; }
+  .row .btn { white-space: normal; text-align: left; }
+  .cap { font-size: var(--cap-size); line-height: 1.32; margin: 0 0 .55em; opacity: .5; overflow-wrap: anywhere; }
+  .cap.recent { opacity: .78; }
+  .cap.last { opacity: 1; border-left: 4px solid var(--stage); padding-left: .6em; margin-left: calc(-.6em - 4px); }
+  .waiting { color: var(--muted); font-size: 1.2rem; }
+  footer { flex: none; background: color-mix(in srgb, var(--bg) 94%, transparent); border-top: 1px solid var(--line);
+    padding: .6rem 1rem calc(.6rem + env(safe-area-inset-bottom)); }
+  footer .inner { max-width: 52rem; margin: 0 auto; display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;
+    color: var(--muted); font-size: .88rem; }
+  progress { width: 100%; height: .35rem; accent-color: var(--stage); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Subtitula</h1>
+  <p>Repetición de una corrida real con la Gemini Live API: el audio es el de la charla y los subtítulos aparecen en el momento exacto en que salieron. Para usarlo en vivo, <a href="https://github.com/flordelcastillo/subtitula">instalalo desde el repo</a>.
+  <br><span lang="en">Replay of a real run with the Gemini Live API: captions appear exactly when they were produced.</span></p>
+</header>
+<section class="controls">
+  <div class="row" id="rooms" role="group" aria-label="Sala"></div>
+  <div class="row" id="langs" role="group" aria-label="Idioma"></div>
+  <div class="row">
+    <button class="btn primary play" id="play">Reproducir la charla</button>
+    <button class="btn" id="voice" hidden aria-pressed="false">Escuchar la interpretación</button>
+  </div>
+  <progress id="progress" value="0" max="1"></progress>
+</section>
+<main class="captions" aria-live="polite"><p class="waiting">Elegí una sala y un idioma, y tocá "Reproducir la charla".</p></main>
+<footer><div class="inner" id="stats"></div></footer>
+<audio id="audio" preload="auto"></audio>
+<script src="demo.js"></script>
+</body>
+</html>

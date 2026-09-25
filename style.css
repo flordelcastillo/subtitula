@@ -1,0 +1,70 @@
+/* Subtitula: tokens compartidos por la vista de audiencia, el panel y la página de envío. */
+:root {
+  --ink: #121a30;        /* sala a oscuras */
+  --ink-2: #1b2542;
+  --line: #2c3960;
+  --paper: #f3eee4;      /* blanco cálido de pantalla */
+  --muted: #9aa5c4;
+  --stage: #f4b54a;      /* luz de escenario: sólo marca lo que está en vivo */
+  --ok: #7fd1a8;
+  --warn: #f4b54a;
+  --bad: #ff8a7a;
+  --bg: var(--ink);
+  --fg: var(--paper);
+  --surface: var(--ink-2);
+  --cap-size: clamp(1.6rem, 5.2vw, 2.6rem);
+  --font: "Atkinson Hyperlegible Next", "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --bg: #f7f4ec;
+  --fg: #16203a;
+  --surface: #ebe6d9;
+  --line: #cfc7b4;
+  --muted: #5b6480;
+  --stage: #b86e00;
+  --ok: #1f7a4d;
+  --bad: #b3261e;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 1.0625rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; }
+button, select, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--stage); outline-offset: 2px; border-radius: 4px; }
+
+.btn {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: .35rem .9rem;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--muted); }
+.btn[hidden] { display: none; }
+.btn[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.btn.primary { background: var(--stage); color: #1a1204; border-color: var(--stage); font-weight: 700; }
+
+.dot { width: .6rem; height: .6rem; border-radius: 50%; background: var(--muted); display: inline-block; flex: none; }
+.dot.live { background: var(--ok); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 25%, transparent); }
+.dot.warn { background: var(--warn); }
+.dot.bad { background: var(--bad); }
+
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
