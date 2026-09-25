@@ -18,7 +18,9 @@
   header { padding: 1rem 1rem .4rem; max-width: 52rem; width: 100%; margin: 0 auto; }
   header h1 { margin: 0; font-size: 1.6rem; }
   header p { margin: .35rem 0 0; color: var(--muted); font-size: .9rem; max-width: 44rem; }
-  @media (max-width: 40rem) { header p span[lang="en"] { display: none; } .cap { font-size: 1.45rem; } }
+  @media (max-width: 40rem) { .cap { font-size: 1.45rem; } }
+  .ui-langs { margin-top: .5rem; gap: .3rem; }
+  .ui-langs .btn { font-size: .85rem; padding: .2rem .7rem; }
   header a { color: var(--fg); }
   .controls { max-width: 52rem; width: 100%; margin: 0 auto; padding: .4rem 1rem; display: grid; gap: .6rem; }
   .row { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; }
@@ -41,21 +43,22 @@
 <body>
 <header>
   <h1>Subtitula</h1>
-  <p>Repetición de una corrida real con la Gemini Live API: el audio es el de la charla y los subtítulos aparecen en el momento exacto en que salieron. Para usarlo en vivo, <a href="https://github.com/flordelcastillo/subtitula">instalalo desde el repo</a>.
-  <br><span lang="en">Replay of a real run with the Gemini Live API: captions appear exactly when they were produced.</span></p>
+  <p><span data-i18n="demo.lead">Repetición de una corrida real con la Gemini Live API: el audio es el de la charla y los subtítulos aparecen en el momento exacto en que salieron. Para usarlo en vivo,</span> <a href="https://github.com/flordelcastillo/subtitula" data-i18n="demo.repo">instalalo desde el repo</a>.</p>
+  <div class="row ui-langs" aria-label="Interface language"></div>
 </header>
 <section class="controls">
   <div class="row" id="rooms" role="group" aria-label="Sala"></div>
   <div class="row" id="langs" role="group" aria-label="Idioma"></div>
   <div class="row">
-    <button class="btn primary play" id="play">Reproducir la charla</button>
-    <button class="btn" id="voice" hidden aria-pressed="false">Escuchar la interpretación</button>
+    <button class="btn primary play" id="play" data-i18n="demo.play">Reproducir la charla</button>
+    <button class="btn" id="voice" hidden aria-pressed="false" data-i18n="demo.voice">Escuchar la interpretación</button>
   </div>
   <progress id="progress" value="0" max="1"></progress>
 </section>
-<main class="captions" aria-live="polite"><p class="waiting">Elegí una sala y un idioma, y tocá "Reproducir la charla".</p></main>
+<main class="captions" aria-live="polite"><p class="waiting" data-i18n="demo.hint">Elegí una sala y un idioma, y tocá "Reproducir la charla".</p></main>
 <footer><div class="inner" id="stats"></div></footer>
 <audio id="audio" preload="auto"></audio>
+<script src="i18n.js"></script>
 <script src="demo.js"></script>
 </body>
 </html>
