@@ -78,6 +78,10 @@
       if (seq > lastSeq) { lastSeq = seq; show(c); }
     }
   }
+  // Avisa qué idioma muestra: con idiomas bajo demanda, la sesión de ese idioma queda abierta.
+  const ping = () => fetch(`/api/sessions?watching=${encodeURIComponent(sid)}&lang=${encodeURIComponent(lang)}`).catch(() => {});
+  ping();
+  setInterval(ping, 20000);
   const es = new EventSource(`/api/sessions/${encodeURIComponent(sid)}/stream?since=${Number.MAX_SAFE_INTEGER}`);
   es.onmessage = (e) => {
     const c = JSON.parse(e.data);

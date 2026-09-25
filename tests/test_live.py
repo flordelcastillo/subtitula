@@ -74,6 +74,59 @@ async def test_auto_language_uses_a_separate_original_track():
     assert not cap.visible_in("es")
 
 
+async def test_languages_on_demand():
+    worker, _ = make_worker()
+    es, pt = worker.tracks
+    assert es.primary and not pt.primary
+    worker.set_demand([])  # al arrancar hay un período de gracia: todo abierto
+    assert pt.wanted.is_set()
+    worker.started_at -= 1000  # pasó la gracia
+    worker.set_demand([])
+    assert es.wanted.is_set() and not pt.wanted.is_set()
+    pt.put(b"\x00\x00" * 1600)  # sin público, el audio ni se encola
+    assert pt.queue.empty()
+    worker.set_demand(["pt"])
+    assert pt.wanted.is_set()
+    worker.demand_until["pt"] = time.time() - 1  # pasó el tiempo de espera sin público
+    worker.set_demand(["es"])
+    assert not pt.wanted.is_set() and es.wanted.is_set()
+
+
+async def test_long_silence_is_not_sent():
+    import numpy as np
+
+    worker, _ = make_worker()
+    worker.pause_after_s = 1.0
+    silence = np.zeros(1600, dtype=np.int16).tobytes()
+    voice = (np.sin(np.arange(1600) / 5) * 8000).astype(np.int16).tobytes()
+    es = worker.tracks[0]
+    for _ in range(30):  # 3 s de silencio
+        worker._on_audio(silence)
+        worker._forward(silence)
+    sent_before_pause = es.queue.qsize()
+    assert worker.paused and sent_before_pause <= 11
+    assert worker.saved_audio_s > 1.5
+    worker._on_audio(voice)
+    worker._forward(voice)
+    # Al volver la voz se manda también el medio segundo previo, para no perder la primera sílaba.
+    assert not worker.paused and es.queue.qsize() == sent_before_pause + 5 + 1
+
+
+def test_hub_demand_from_viewers_and_listeners(tmp_path):
+    import asyncio
+
+    from subtitula.config import AppConfig
+    from subtitula.hub import Hub
+
+    hub = Hub(AppConfig(data_dir=tmp_path, sessions=[SessionConfig(id="sala", name="Sala")]))
+    hub.watch("sala", "es")
+    hub.watch("otra", "pt")  # sala inexistente: se ignora
+    hub.listeners[("sala", "pt")] = {asyncio.Queue()}
+    assert hub.demand_for("sala") == ["es", "pt"]
+    hub.demand[("sala", "es")] -= 60
+    assert hub.demand_for("sala") == ["pt"]
+
+
 async def test_pause_lag_measures_voice_to_text():
     worker, out = make_worker()
     now = time.time()

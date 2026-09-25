@@ -74,6 +74,7 @@
     const options = [...codes.map((c) => ({ code: c, name: langName[c] || c })), { code: "original", name: "Original" }];
     langs.innerHTML = options.map((o) => `<button class="btn" data-lang="${o.code}" lang="${o.code === "original" ? "" : o.code}">${esc(o.name)}</button>`).join("")
       + `<button class="btn" id="dual" title="Mostrar el original debajo de la traducción">Con original</button>`;
+    let ping = () => {};  // se define más abajo, cuando existe la conexión
     const syncButtons = () => {
       langs.querySelectorAll("[data-lang]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.lang === lang)));
       $("#dual").setAttribute("aria-pressed", String(dual));
@@ -96,7 +97,7 @@
       const b = e.target.closest("button");
       if (!b) return;
       if (b.id === "dual") { dual = !dual; store.set("dual", dual ? "1" : "0"); }
-      else { lang = b.dataset.lang; store.set("lang", lang); }
+      else { lang = b.dataset.lang; store.set("lang", lang); ping(); }
       syncButtons();
       redraw();
     });
@@ -258,16 +259,19 @@
     es.onopen = () => setConn(true);
     es.onerror = () => setConn(false);
     es.onmessage = (e) => add(JSON.parse(e.data));
-    setInterval(async () => {
+    // El sondeo dice qué sala e idioma se está mirando: los idiomas sin público no abren sesión.
+    ping = async () => {
       try {
-        const d = await api("/api/sessions");
+        const d = await api(`/api/sessions?watching=${encodeURIComponent(sid)}&lang=${encodeURIComponent(lang)}`);
         const info = d.sessions.find((s) => s.id === sid);
         stageState = info?.state || "offline";
         const langsNow = info?.speech || [];
         if (langsNow.join() !== speechLangs.join()) { speechLangs = langsNow; syncButtons(); }
         setConn(es.readyState === EventSource.OPEN);
       } catch { /* la próxima vuelta reintenta */ }
-    }, 10000);
+    };
+    setInterval(ping, 10000);
+    ping();
 
     syncButtons();
   }

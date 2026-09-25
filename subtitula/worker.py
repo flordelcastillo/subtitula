@@ -298,6 +298,9 @@ class SessionWorker:
         # workers que corren en otra máquina sin reiniciarlos.
         if reply and isinstance(reply.get("glossary"), list):
             self.set_glossary(reply["glossary"])
+        # Idiomas que alguien está mirando o escuchando: el motor en vivo cierra las sesiones sin público.
+        if reply and isinstance(reply.get("demand"), list) and hasattr(self, "set_demand"):
+            self.set_demand(reply["demand"])
 
     async def _heartbeat(self) -> None:
         while True:

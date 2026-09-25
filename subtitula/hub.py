@@ -38,6 +38,7 @@ class Hub:
         self.status: dict[str, dict] = {}
         self.subscribers: dict[str, set[asyncio.Queue]] = {}
         self.listeners: dict[tuple[str, str], set[asyncio.Queue]] = {}  # (sala, idioma) -> audio
+        self.demand: dict[tuple[str, str], float] = {}  # (sala, idioma) -> última vez que alguien lo miró
         self.workers: dict = {}  # sólo en modo todo-en-uno: sid -> SessionWorker
         config.data_dir.mkdir(parents=True, exist_ok=True)
         for sid in self.meta:
@@ -104,7 +105,18 @@ class Hub:
     async def status_update(self, sid: str, status: dict) -> dict:
         self.ensure(sid)
         self.status[sid] = status
-        return {"glossary": self.glossary[sid]}
+        return {"glossary": self.glossary[sid], "demand": self.demand_for(sid)}
+
+    def watch(self, sid: str, lang: str) -> None:
+        """Una persona está mirando esta sala en este idioma (lo informa la vista al sondear)."""
+        if sid in self.meta and lang:
+            self.demand[(sid, lang)] = time.time()
+
+    def demand_for(self, sid: str) -> list[str]:
+        now = time.time()
+        langs = {lang for (s, lang), seen in self.demand.items() if s == sid and now - seen < 45}
+        langs |= {lang for (s, lang), queues in self.listeners.items() if s == sid and queues}
+        return sorted(langs)
 
     def set_glossary(self, sid: str, terms: list[str]) -> None:
         self.ensure(sid)
@@ -232,7 +244,10 @@ def create_app(config: AppConfig, token: str = "", run_workers: bool = False) ->
     # -- API pública ---------------------------------------------------------------------------
 
     @app.get("/api/sessions")
-    async def sessions():
+    async def sessions(watching: str = "", lang: str = ""):
+        # La vista y el overlay sondean con la sala y el idioma que muestran: así se sabe qué se usa.
+        if watching:
+            hub.watch(watching, lang)
         return {
             "event": config.event,
             "languages": [{"code": c, "name": LANG_NAMES.get(c, c)} for c in config.languages],

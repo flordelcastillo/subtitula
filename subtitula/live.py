@@ -62,8 +62,13 @@ class LiveTrack:
         self.handle: str | None = None
         self.connected = False
         self.reconnects = 0
+        # Idiomas bajo demanda: una sesión sin público se cierra y se reabre cuando alguien la pide.
+        self.wanted = asyncio.Event()
+        self.wanted.set()
 
-    def put(self, pcm: bytes) -> None:
+    def put(self, pcm: bytes | None) -> None:
+        if pcm is not None and not self.wanted.is_set():
+            return
         try:
             self.queue.put_nowait(pcm)
         except asyncio.QueueFull:
@@ -91,15 +96,23 @@ class LiveTrack:
         engine: LiveEngine = self.worker.engine  # type: ignore[assignment]
         backoff = 1.0
         while not self.worker.stopping:
+            await self.wanted.wait()
+            released = False
             try:
                 async with engine.client.aio.live.connect(model=engine.model, config=self._config()) as session:
                     self.connected = True
                     backoff = 1.0
                     sender = asyncio.create_task(self._send(session))
+                    receiver = asyncio.create_task(self._receive(session))
+                    idle = asyncio.create_task(self._until_unwanted())
                     try:
-                        await self._receive(session)
+                        done, _ = await asyncio.wait({receiver, idle}, return_when=asyncio.FIRST_COMPLETED)
+                        released = idle in done
+                        if receiver in done:
+                            receiver.result()  # propaga el error de la sesión, si lo hubo
                     finally:
-                        sender.cancel()
+                        for task in (sender, receiver, idle):
+                            task.cancel()
                         self.connected = False
                 if self.worker.stopping:
                     return
@@ -110,11 +123,25 @@ class LiveTrack:
                 self.worker.errors += 1
                 self.worker.last_error = f"sesión {self.target}: {type(exc).__name__}: {str(exc)[:200]}"
                 log.warning("[%s/%s] sesión Live caída: %s", self.worker.session.id, self.target, exc)
+                # Un identificador de retome vencido haría fallar cada reintento: se abre una sesión nueva.
+                self.handle = None
             if self.worker.stopping:
                 return
+            if released:
+                # Se cerró por falta de público: no es un error ni una reconexión.
+                log.info("[%s/%s] sin público, sesión en espera", self.worker.session.id, self.target)
+                self.worker.builders[self.target].close()
+                self.handle = None
+                while not self.queue.empty():  # al reabrir, nada de audio viejo
+                    self.queue.get_nowait()
+                continue
             self.reconnects += 1
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 15)
+
+    async def _until_unwanted(self) -> None:
+        while self.wanted.is_set():
+            await asyncio.sleep(0.5)
 
     async def _send(self, session) -> None:
         while True:
@@ -234,6 +261,55 @@ class LiveSessionWorker(SessionWorker):
         self._quiet_chunks = 0
         self.stopping = False
         self._lock = asyncio.Lock()
+        # Silencio largo (cortes, cambio de orador): no se manda audio, la Live API cobra por segundo.
+        self.silence_dbfs = float(os.environ.get("SUBTITULA_SILENCE_DBFS", "-50"))
+        self.pause_after_s = float(os.environ.get("SUBTITULA_PAUSE_AFTER_S", "10"))
+        self._silent_s = 0.0
+        self.paused = False
+        self.saved_audio_s = 0.0
+        self._preroll: deque[bytes] = deque(maxlen=5)  # 0,5 s para no comerse la primera sílaba
+        # Idiomas bajo demanda: fuera del principal, una sesión se cierra tras LINGER_S sin público.
+        self.on_demand = os.environ.get("SUBTITULA_ON_DEMAND", "1") != "0"
+        self.linger_s = float(os.environ.get("SUBTITULA_LINGER_S", "120"))
+        self.demand_until: dict[str, float] = {}
+
+    # -- demanda y silencio ----------------------------------------------------------------------
+
+    def set_demand(self, langs: list[str]) -> None:
+        """El hub informa qué idiomas está mirando o escuchando alguien en esta sala."""
+        if not self.on_demand:
+            return
+        now = time.time()
+        for lang in langs:
+            self.demand_until[lang] = now + self.linger_s
+        grace = now - self.started_at < self.linger_s  # al arrancar, todo abierto un rato
+        for track in self.tracks:
+            if track.primary:
+                continue  # de la sesión principal sale el original: siempre abierta
+            if grace or self.demand_until.get(track.target, 0) > now:
+                track.wanted.set()
+            else:
+                track.wanted.clear()
+
+    def _forward(self, pcm: bytes) -> None:
+        chunk_s = len(pcm) / 32000
+        if self.level_dbfs < self.silence_dbfs:
+            self._silent_s += chunk_s
+        else:
+            self._silent_s = 0.0
+        if self._silent_s > self.pause_after_s:
+            self.paused = True
+            self.saved_audio_s += chunk_s * len(self.tracks)
+            self._preroll.append(pcm)
+            return
+        if self.paused:
+            self.paused = False
+            for old in self._preroll:
+                for track in self.tracks:
+                    track.put(old)
+            self._preroll.clear()
+        for track in self.tracks:
+            track.put(pcm)
 
     # -- audio ---------------------------------------------------------------------------------
 
@@ -264,8 +340,7 @@ class LiveSessionWorker(SessionWorker):
                             self.state = "live"
                             backoff = 1.0
                         self._on_audio(pcm)
-                        for track in self.tracks:
-                            track.put(pcm)
+                        self._forward(pcm)
                         if self._stop.is_set():
                             break
                     if not self._is_live_source():
@@ -361,7 +436,10 @@ class LiveSessionWorker(SessionWorker):
 
     def status(self) -> dict:
         data = super().status()
-        data["live_sessions"] = f"{sum(t.connected for t in self.tracks)}/{len(self.tracks)}"
+        data["live_sessions"] = f"{sum(t.connected for t in self.tracks)}/{sum(t.wanted.is_set() for t in self.tracks)}"
+        data["idle_langs"] = [t.target for t in self.tracks if not t.wanted.is_set()]
+        data["paused"] = self.paused
+        data["saved_audio_s"] = round(self.saved_audio_s, 1)
         data["reconnects"] = sum(t.reconnects for t in self.tracks)
         data["speech_langs"] = [t.target for t in self.tracks] if hasattr(self.publisher, "speech") else []
         return data
