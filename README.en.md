@@ -10,7 +10,7 @@
 
 **Open source live captions and simultaneous interpretation for multi-room conferences, built on the Gemini Live API.**
 
-**[Try the demo](https://flordelcastillo.github.io/subtitula/)** (replay of a real run, nothing to install) · [Nerdearla Vibeathon 2026](https://nerdearla26.devpost.com) · [Measured evidence](docs/evidencia) · [Versión en español](README.md)
+**[Try the demo](https://flordelcastillo.github.io/subtitula/)** (replay of a real run, nothing to install) · **[2-minute video](https://youtu.be/59H_dzXcG7s)** · [Nerdearla Vibeathon 2026](https://nerdearla26.devpost.com) · [Measured evidence](docs/evidencia) · [Versión en español](README.md)
 
 | The audience, in their language | "What did I miss?" | Room screen with QR | Production dashboard |
 |---|---|---|---|
