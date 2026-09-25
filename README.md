@@ -6,7 +6,7 @@
 **Subtítulos e interpretación simultánea en vivo, open source, para conferencias con muchas salas a la vez.**
 *Live captions and simultaneous interpretation for multi-room conferences, open source.*
 
-[Vibeathon de Nerdearla 2026](https://nerdearla26.devpost.com) · [Evidencia medida](docs/evidencia) · [Los cinco criterios](#los-cinco-criterios-con-evidencia) · [English summary](#english-summary)
+**[Probá la demo](https://flordelcastillo.github.io/subtitula/)** (repetición de una corrida real, sin instalar nada) · [Vibeathon de Nerdearla 2026](https://nerdearla26.devpost.com) · [Evidencia medida](docs/evidencia) · [Los cinco criterios](#los-cinco-criterios-con-evidencia) · [English summary](#english-summary)
 
 | El público, en su idioma | "¿Qué me perdí?" | Pantalla de sala con QR | Panel de producción |
 |---|---|---|---|
@@ -95,6 +95,17 @@ Precios oficiales de la [página de precios de la Gemini API](https://ai.google.
 | `gemini` (por tramos) | `gemini-3.5-transcribe` a US$ 0,005/min (audio de entrada y texto de salida), más la traducción de texto con flash-lite a los idiomas del evento | unos US$ 0,65 para todos los idiomas (estimado: US$ 0,30 de transcripción y ~US$ 0,35 de traducción) |
 | `local` | Nada de API: faster-whisper y Gemma en una máquina propia con GPU | US$ 0 |
 
+Cuánto sale un evento:
+
+| Escenario | Sesiones Live abiertas | Costo |
+|---|---|---|
+| Una charla en inglés con subtítulos en español | 1 | US$ 2,21 por hora |
+| 5 salas en paralelo con un idioma de destino | 5 | US$ 11,05 por hora |
+| 5 salas, y en 2 de ellas alguien lee también en portugués | 7 | US$ 15,47 por hora |
+| 30 charlas de 40 minutos traducidas al español (~20 horas de sala) | 1 por sala | unos US$ 44 en total |
+
+El límite de sesiones simultáneas depende del tier del proyecto en AI Studio. La [guía oficial de Live Translate](https://github.com/google-gemini/gemini-live-translate-livekit) advierte que el nivel inicial admite pocas conexiones. Con idiomas bajo demanda, sólo cuentan las sesiones que alguien está usando.
+
 Tres cosas bajan la cuenta del motor en vivo sin tocar la calidad:
 
 - **Idiomas bajo demanda.** Cada sala mantiene abierta sólo la sesión de su idioma principal. Las demás (por ejemplo, portugués) se abren cuando alguien las lee o las escucha y se cierran a los 2 minutos sin público. En una conferencia de 30 charlas con tres idiomas, la mayoría de esas sesiones no se abre nunca.
@@ -133,7 +144,8 @@ Tres cosas bajan la cuenta del motor en vivo sin tocar la calidad:
 
 - **Una pista por idioma.** El original y cada traducción arman sus propias líneas: se cortan al terminar una oración (aunque el fin de oración venga en medio de un fragmento), en una coma si la línea ya es larga, a los 84 caracteres (dos renglones de 42, la norma de subtitulado) o tras 2 s sin palabras nuevas. Así el español se lee en frases de español y no como inglés partido en los lugares del inglés. La línea abierta crece en pantalla palabra por palabra.
 - **Preguntas en otro idioma.** Con `echo_target_language`, si alguien habla directamente en el idioma de destino (por ejemplo, una pregunta del público en español durante una charla en inglés), la sesión la repite tal cual en lugar de dejar un hueco.
-- **Sesiones largas.** La sesión usa compresión de contexto con ventana deslizante para aguantar una charla entera y, si el servidor la corta, se reabre retomando el contexto (session resumption).
+- **Sesiones largas.** La sesión usa compresión de contexto con ventana deslizante para aguantar una charla entera y, si el servidor la corta, se reabre retomando el contexto (session resumption). Mientras se reconecta, el audio espera en una cola de hasta 10 s y se manda apenas vuelve la sesión, así que no se pierde lo que se dijo.
+- **Modelo preview.** `gemini-3.5-live-translate-preview` es un modelo en preview. El nombre se cambia con `SUBTITULA_LIVE_MODEL`, y si el modelo falla o cambia, el motor por tramos (`--engine gemini`) y el local (`--engine local`) siguen andando con la misma interfaz.
 - **Demora medida.** El panel muestra cuánto tarda en llegar la última palabra de una frase desde que el orador hace una pausa. Se mide así porque no necesita marcas de tiempo externas y se puede ver en vivo durante el evento. En 10 minutos seguidos de cada charla de ejemplo: original 0,34 s en p50 y 0,7 a 0,9 s en p90; traducción 0,29 a 0,34 s en p50 y 0,76 a 0,89 s en p90, sin atraso acumulado minuto a minuto ([`docs/evidencia/`](docs/evidencia)). Al arrancar la sesión, la primera frase tarda unos 3 s.
 
 Los motores siguientes quedan como alternativa (`--engine gemini`, `--engine local`).
@@ -236,12 +248,27 @@ Para más de 20 o 30 salas o miles de personas: varios workers por máquina, el 
 
 ## Operación durante el evento
 
-1. Antes de abrir, `/admin` con todas las salas en verde y el vúmetro moviéndose.
-2. Proyectar o imprimir el QR de cada sala (link *QR* en el panel). Apunta a `/s/<sala>`.
-3. En OBS o vMix, agregar una fuente de navegador con `/overlay/<sala>?lang=es` (1920×1080). Parámetros: `lines`, `size`, `hide`, `pos=top`, `box=0`.
-4. Si un nombre sale mal escrito, se agrega al glosario de la sala desde el panel y se corrige en el próximo tramo.
-5. Una fila en rojo avisa de fuente caída, más de 20 s sin audio, latencia p90 por encima de 6 s o tramos salteados.
-6. Al terminar, la charla se descarga en `/api/sessions/<sala>/export.srt?lang=es` (o `.vtt` o `.txt`, en cualquier idioma).
+**Antes del evento**
+
+1. Cargar las charlas en `config/sessions.yaml` (título, orador, tema, idioma y fuente) y el glosario común en `config/glossary.yaml`.
+2. En `/admin`, **Sugerir con IA** en cada sala: Gemini propone nombres propios, productos y siglas a partir del título, el orador y la descripción de la agenda. Se revisan y se guardan.
+3. Imprimir o proyectar el QR de cada sala (link *QR* en el panel o `/pantalla/<sala>`). Apunta a `/s/<sala>`.
+
+**Checklist de sala (para la persona voluntaria, 5 minutos)**
+
+- [ ] La compu de la sala está conectada a la salida de la consola y tiene abierta `/enviar/<sala>` con esa entrada elegida, o producción confirma que la fuente de la sala (stream, SRT, RTMP) está en verde.
+- [ ] Prueba de sonido: alguien habla al micrófono y el vúmetro de la sala se mueve en `/admin`.
+- [ ] En un celular, escanear el QR, elegir español y ver aparecer la frase de prueba.
+- [ ] La tele de la sala muestra `/pantalla/<sala>?lang=es&lang2=en`.
+- [ ] Si la sala va al stream: en OBS o vMix, fuente de navegador con `/overlay/<sala>?lang=es` (1920×1080; parámetros `lines`, `size`, `hide`, `pos=top`, `box=0`, `bg=00b140`).
+
+**Durante la charla**
+
+- Una fila en rojo en `/admin` avisa de una fuente caída, más de 20 s sin audio, una demora p90 por encima de 6 s, cortes por atraso o tramos salteados.
+- Si un nombre sale mal escrito, se corrige en el glosario de la sala desde el panel: aplica desde la línea siguiente.
+- `/metrics` expone lo mismo que el panel en formato Prometheus, para sumarlo al Grafana del evento.
+
+**Al terminar**, la charla se descarga en `/api/sessions/<sala>/export.srt?lang=es` (o `.vtt` o `.txt`, en cualquier idioma), lista para subir con el video.
 
 ## Desarrollo
 
