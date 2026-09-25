@@ -32,7 +32,7 @@ async def main() -> None:
         silence_duration_ms=300, end_of_speech_sensitivity=types.EndSensitivity.END_SENSITIVITY_HIGH,
         prefix_padding_ms=100))
     config = types.LiveConnectConfig(
-        response_modalities=[types.Modality.TEXT] if "transcribe" in model else [types.Modality.AUDIO],
+        response_modalities=[types.Modality.TEXT] if ("transcribe" in model or os.environ.get("MODALITY") == "TEXT") else [types.Modality.AUDIO],
         input_audio_transcription=types.AudioTranscriptionConfig(),
         output_audio_transcription=types.AudioTranscriptionConfig() if "transcribe" not in model else None,
         realtime_input_config=vad,

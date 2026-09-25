@@ -65,6 +65,7 @@ class LiveTrack:
         # Idiomas bajo demanda: una sesión sin público se cierra y se reabre cuando alguien la pide.
         self.wanted = asyncio.Event()
         self.wanted.set()
+        self.refresh = False  # el glosario cambió: reconectar ya, con el vocabulario nuevo
 
     def put(self, pcm: bytes | None) -> None:
         if pcm is not None and not self.wanted.is_set():
@@ -97,6 +98,7 @@ class LiveTrack:
         backoff = 1.0
         while not self.worker.stopping:
             await self.wanted.wait()
+            self.refresh = False  # la conexión nueva ya toma el glosario vigente
             released = False
             try:
                 async with engine.client.aio.live.connect(model=engine.model, config=self._config()) as session:
@@ -127,6 +129,10 @@ class LiveTrack:
                 self.handle = None
             if self.worker.stopping:
                 return
+            if released and self.refresh and self.wanted.is_set():
+                self.refresh = False
+                log.info("[%s/%s] glosario nuevo: reconecto retomando el contexto", self.worker.session.id, self.target)
+                continue
             if released:
                 # Se cerró por falta de público: no es un error ni una reconexión.
                 log.info("[%s/%s] sin público, sesión en espera", self.worker.session.id, self.target)
@@ -140,7 +146,7 @@ class LiveTrack:
             backoff = min(backoff * 2, 15)
 
     async def _until_unwanted(self) -> None:
-        while self.wanted.is_set():
+        while self.wanted.is_set() and not self.refresh:
             await asyncio.sleep(0.5)
 
     async def _send(self, session) -> None:
@@ -156,8 +162,8 @@ class LiveTrack:
             if msg.session_resumption_update and msg.session_resumption_update.new_handle:
                 self.handle = msg.session_resumption_update.new_handle
             if msg.usage_metadata:
-                self.worker.input_tokens += msg.usage_metadata.prompt_token_count or 0
-                self.worker.output_tokens += msg.usage_metadata.response_token_count or 0
+                self.worker.add_usage(self.worker.engine.model, msg.usage_metadata.prompt_token_count or 0,
+                                      msg.usage_metadata.response_token_count or 0)
             if msg.go_away:
                 log.info("[%s/%s] el servidor pidió reconectar", self.worker.session.id, self.target)
                 return
@@ -218,7 +224,7 @@ class TrackBuilder:
                                    lang=lang, text="", created_at=now, track=self.track, original=self.original)
             self.first_at = now
         cap = self.current
-        cap.text = _join(cap.text, delta)
+        cap.text = w.fixer.fix(_join(cap.text, delta))
         cap.end = w._audio_pos()
         self.last_at = now
         size = len(cap.text)
@@ -430,9 +436,13 @@ class LiveSessionWorker(SessionWorker):
         if assigned and assigned != cap.seq:
             cap.seq = assigned
 
-    def set_glossary(self, terms: list[str]) -> None:
-        # Las sesiones Live toman el vocabulario al conectar: el cambio aplica en la próxima reconexión.
-        super().set_glossary(terms)
+    def set_glossary(self, terms: list[str]) -> bool:
+        changed = super().set_glossary(terms)
+        if changed:
+            # El vocabulario se fija al conectar: se reconecta cada sesión retomando el contexto.
+            for track in self.tracks:
+                track.refresh = True
+        return changed
 
     def status(self) -> dict:
         data = super().status()

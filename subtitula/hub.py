@@ -175,13 +175,6 @@ class LocalPublisher:
         return await self.hub.status_update(session, status)
 
 
-def _price(name: str, default: float) -> float:
-    try:
-        return float(os.environ.get(name, default))
-    except ValueError:
-        return default
-
-
 def create_app(config: AppConfig, token: str = "", run_workers: bool = False) -> FastAPI:
     hub = Hub(config, token=token)
     tasks: list[asyncio.Task] = []
@@ -317,13 +310,12 @@ def create_app(config: AppConfig, token: str = "", run_workers: bool = False) ->
 
     @app.get("/api/status")
     async def status():
-        price_in = _price("SUBTITULA_PRICE_INPUT_PER_M", 0.30)
-        price_out = _price("SUBTITULA_PRICE_OUTPUT_PER_M", 0.40)
         rows = []
         for sid in hub.meta:
             st = dict(hub.status.get(sid, {}))
             info = hub.session_info(sid)
-            cost = (st.get("input_tokens", 0) * price_in + st.get("output_tokens", 0) * price_out) / 1e6
+            # Cada worker calcula su costo con los precios del modelo que usó (subtitula/pricing.py).
+            cost = st.get("cost_usd", 0.0)
             audio_h = max(st.get("audio_s", 0) / 3600, 1e-9)
             rows.append({**info, **st, "state": info["state"], "glossary": hub.glossary.get(sid, []),
                          "cost_usd": round(cost, 4),

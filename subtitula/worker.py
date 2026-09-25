@@ -16,6 +16,8 @@ from .audio import QueueSource, ffmpeg_pcm, is_live
 from .captions import Caption
 from .config import SessionConfig
 from .engines import Engine, EngineContext
+from .glossary import GlossaryFixer
+from .pricing import cost_usd
 from .segmenter import Segment, Segmenter, SegmenterConfig, frame_dbfs
 
 log = logging.getLogger(__name__)
@@ -68,6 +70,7 @@ class SessionWorker:
         self.publisher = publisher
         self.languages = languages
         self.glossary = list(dict.fromkeys([*glossary, *session.glossary]))
+        self.fixer = GlossaryFixer(self.glossary)
         self.queue_source = QueueSource() if session.source == "browser" else None
         self.backpressure = not session.realtime and not is_live(session.source)
         self._source_factory = source_factory
@@ -88,6 +91,7 @@ class SessionWorker:
         self.audio_seconds = 0.0
         self.input_tokens = 0
         self.output_tokens = 0
+        self.cost_usd = 0.0
         self.level_dbfs = -120.0
         self.last_audio_at = 0.0
         self.started_at = time.time()
@@ -221,9 +225,10 @@ class SessionWorker:
             self.captions += 1
             context = self._context()
             self.previous.append(result.text)
-            self.input_tokens += result.input_tokens
-            self.output_tokens += result.output_tokens
+            self.add_usage(result.model, result.input_tokens, result.output_tokens)
             translate = self.engine.two_stage and any(lang != result.lang for lang in self.languages)
+            result.text = self.fixer.fix(result.text)
+            result.tr = {lang: self.fixer.fix(text) for lang, text in result.tr.items()}
             cap = Caption(session=self.session.id, seq=self.seq, start=round(seg.start, 2),
                           end=round(seg.end, 2), lang=result.lang, text=result.text, tr=result.tr,
                           latency_ms=latency, created_at=now, pending=translate)
@@ -242,11 +247,10 @@ class SessionWorker:
                 result = await self._retrying(lambda: self.engine.translate(cap.text, cap.lang, ctx),
                                               f"la traducción del #{cap.seq}")
             cap.lang = result.lang if result.lang != "und" else cap.lang
-            cap.tr = result.tr
+            cap.tr = {lang: self.fixer.fix(text) for lang, text in result.tr.items()}
             cap.tr_latency_ms = int((time.time() - ready_at) * 1000)
             self.tr_latencies.append(cap.tr_latency_ms)
-            self.input_tokens += result.input_tokens
-            self.output_tokens += result.output_tokens
+            self.add_usage(result.model, result.input_tokens, result.output_tokens)
         except Exception as exc:  # noqa: BLE001
             self.errors += 1
             self.last_error = f"traducción: {type(exc).__name__}: {str(exc)[:230]}"
@@ -282,11 +286,22 @@ class SessionWorker:
             "translations_pending": self.tr_pending,
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
+            "cost_usd": round(self.cost_usd, 4),
             "updated_at": time.time(),
         }
 
-    def set_glossary(self, terms: list[str]) -> None:
-        self.glossary = list(dict.fromkeys(terms))
+    def add_usage(self, model: str, input_tokens: int, output_tokens: int) -> None:
+        self.input_tokens += input_tokens
+        self.output_tokens += output_tokens
+        self.cost_usd += cost_usd(model, input_tokens, output_tokens)
+
+    def set_glossary(self, terms: list[str]) -> bool:
+        new = list(dict.fromkeys(terms))
+        if new == self.glossary:
+            return False
+        self.glossary = new
+        self.fixer = GlossaryFixer(new)
+        return True
 
     async def _publish_status(self) -> None:
         try:

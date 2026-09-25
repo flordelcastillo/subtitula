@@ -127,6 +127,30 @@ def test_hub_demand_from_viewers_and_listeners(tmp_path):
     assert hub.demand_for("sala") == ["pt"]
 
 
+def test_glossary_fixer_canonical_spelling():
+    from subtitula.glossary import GlossaryFixer
+
+    g = GlossaryFixer(["ElevenLabs", "Nerdearla", "kubectl", "GitHub", "Thor Schaeff", "RAG", "open source"])
+    assert g.fix("we use eleven labs on github") == "we use ElevenLabs on GitHub"
+    assert g.fix("Bienvenidos a nerdearla, usá Kubectl") == "Bienvenidos a Nerdearla, usá kubectl"
+    assert g.fix("thor schaeff habla de rag") == "Thor Schaeff habla de RAG"
+    assert g.fix("Open Source es genial") == "Open source es genial"  # conserva la mayúscula inicial
+    assert g.fix("drag and drop, el llamado") == "drag and drop, el llamado"  # sin falsos positivos
+
+
+async def test_live_tracks_apply_glossary_and_hot_reload():
+    worker, out = make_worker()
+    await worker.on_translation("es", "Bienvenidos a nerdearla")
+    assert out.track("es") == ["Bienvenidos a Nerdearla"]
+    assert not any(t.refresh for t in worker.tracks)
+    assert worker.set_glossary(worker.glossary) is False  # el mismo glosario: no reconecta
+    assert not any(t.refresh for t in worker.tracks)
+    assert worker.set_glossary([*worker.glossary, "Konex"]) is True
+    assert all(t.refresh for t in worker.tracks)
+    await worker.on_translation("es", " en el konex.")
+    assert out.track("es") == ["Bienvenidos a Nerdearla en el Konex."]
+
+
 async def test_pause_lag_measures_voice_to_text():
     worker, out = make_worker()
     now = time.time()
