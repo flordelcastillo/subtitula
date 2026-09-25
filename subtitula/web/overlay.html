@@ -12,6 +12,7 @@
     hide=8                   segundos sin habla hasta ocultar el subtítulo (0 = nunca)
     pos=bottom|top           ubicación
     box=0                    sin caja de fondo (sólo contorno)
+    bg=00b140                fondo de croma, para mezcladores que no aceptan transparencia
 -->
 <style>
   html, body { margin: 0; background: transparent; overflow: hidden; }
@@ -35,33 +36,64 @@
   document.body.style.setProperty("--size", `${parseInt(q.get("size") || "44", 10)}px`);
   if (q.get("pos") === "top") document.body.style.setProperty("--justify", "flex-start");
   if (q.get("box") === "0") document.body.classList.add("nobox");
+  // Fondo de croma para mezcladores sin transparencia (ej. bg=00b140).
+  if (/^[0-9a-f]{6}$/i.test(q.get("bg") || "")) document.documentElement.style.background = document.body.style.background = `#${q.get("bg")}`;
 
   const cc = document.getElementById("cc"), line = cc.querySelector(".line");
-  let recent = [], timer;
-  const textOf = (c) => (lang === "original" || lang === c.lang ? c.text : (c.tr?.[lang] || c.text));
+  let recent = [], timer;  // [{seq, text}] de las líneas en pantalla
+  const textOf = (c) => (c.track || lang === "original" || lang === c.lang ? c.text : (c.tr?.[lang] || c.text));
+  const visible = (c) => !c.track || (lang === "original" ? c.original : c.track === lang);
 
-  function show(c) {
-    recent.push(textOf(c));
-    line.textContent = recent.join(" ");
-    // Recorta desde el principio hasta que entre en la cantidad de líneas pedida.
-    const lineHeight = parseFloat(getComputedStyle(line).lineHeight);
+  function render() {
+    line.textContent = recent.map((r) => r.text).join(" ");
+    // Recorta desde el principio hasta que entre en la cantidad de renglones pedida.
     while (recent.length > 1 && line.getClientRects().length > maxLines) {
       recent.shift();
-      line.textContent = recent.join(" ");
+      line.textContent = recent.map((r) => r.text).join(" ");
     }
-    if (line.getClientRects().length > maxLines && lineHeight) {
+    if (line.getClientRects().length > maxLines) {
       const words = line.textContent.split(" ");
       while (words.length > 1 && line.getClientRects().length > maxLines) { words.shift(); line.textContent = words.join(" "); }
-      recent = [line.textContent];
     }
+  }
+
+  function show(c) {
+    // Una línea del motor en vivo crece palabra por palabra: se actualiza en su lugar.
+    const current = recent.find((r) => r.seq === c.seq);
+    if (current) current.text = textOf(c);
+    else recent.push({ seq: c.seq, text: textOf(c) });
+    render();
     cc.classList.remove("hidden");
     clearTimeout(timer);
     if (hideAfter > 0) timer = setTimeout(() => { cc.classList.add("hidden"); recent = []; }, hideAfter * 1000);
   }
 
+  // En el stream no hay lugar para "traduciendo": en el motor por tramos una línea se muestra cuando
+  // ya tiene la traducción (o cuando el motor desistió y quedó sólo el original). Siempre en orden.
   let lastSeq = 0;
+  const held = new Map();
+  const ready = (c) => !c.pending || lang === "original" || lang === c.lang || c.tr?.[lang];
+  function flush() {
+    for (const seq of [...held.keys()].sort((a, b) => a - b)) {
+      const c = held.get(seq);
+      if (!ready(c)) break;
+      held.delete(seq);
+      if (seq > lastSeq) { lastSeq = seq; show(c); }
+    }
+  }
+  // Avisa qué idioma muestra: con idiomas bajo demanda, la sesión de ese idioma queda abierta.
+  const ping = () => fetch(`/api/sessions?watching=${encodeURIComponent(sid)}&lang=${encodeURIComponent(lang)}`).catch(() => {});
+  ping();
+  setInterval(ping, 20000);
   const es = new EventSource(`/api/sessions/${encodeURIComponent(sid)}/stream?since=${Number.MAX_SAFE_INTEGER}`);
-  es.onmessage = (e) => { const c = JSON.parse(e.data); if (c.seq > lastSeq) { lastSeq = c.seq; show(c); } };
+  es.onmessage = (e) => {
+    const c = JSON.parse(e.data);
+    if (c.track) {
+      if (visible(c) && (c.seq >= lastSeq || recent.some((r) => r.seq === c.seq))) { lastSeq = Math.max(lastSeq, c.seq); show(c); }
+      return;
+    }
+    if (c.seq > lastSeq) { held.set(c.seq, c); flush(); }
+  };
 </script>
 </body>
 </html>

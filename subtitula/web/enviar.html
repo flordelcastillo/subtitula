@@ -17,14 +17,22 @@
   .meter { height: 1rem; background: var(--surface); border-radius: 999px; overflow: hidden; margin-top: 1.5rem; }
   .meter i { display: block; height: 100%; width: 0; background: var(--ok); }
   #state { font-size: 1.1rem; color: var(--fg); }
+  #file-box[hidden] { display: none; }
+  label.check { display: flex; gap: .5rem; align-items: center; margin-top: .8rem; }
+  label.check input { width: auto; }
 </style>
 </head>
 <body>
 <main>
   <h1>Enviar audio de <span id="name">la sala</span></h1>
-  <p>Dejá esta pestaña abierta en la computadora conectada al sonido de la sala. Mientras transmite, el público ve los subtítulos en su celular.</p>
+  <p>Dejá esta pestaña abierta en la computadora conectada al sonido de la sala. Mientras transmite, el público ve los subtítulos en su celular. Para probar sin sala, elegí un archivo de audio o video (por ejemplo, una charla grabada).</p>
   <label for="dev">Entrada de audio</label>
-  <select id="dev"><option value="">Micrófono predeterminado</option></select>
+  <select id="dev"><option value="">Micrófono predeterminado</option><option value="__file__">Archivo de audio o video…</option></select>
+  <div id="file-box" hidden>
+    <label for="file">Archivo</label>
+    <input id="file" type="file" accept="audio/*,video/*">
+    <label class="check"><input id="monitor" type="checkbox" checked> Escucharlo mientras se envía</label>
+  </div>
   <label for="tok">Token de operación (si el servidor lo pide)</label>
   <input id="tok" type="password" autocomplete="off">
   <div class="row">
@@ -37,13 +45,18 @@
   const sid = decodeURIComponent(location.pathname.split("/").pop());
   document.getElementById("name").textContent = sid;
   const $ = (id) => document.getElementById(id);
-  let ctx, stream, ws, node, running = false;
+  let ctx, stream, ws, node, media, running = false;
+  const fileMode = () => $("dev").value === "__file__";
+  $("dev").addEventListener("change", () => { $("file-box").hidden = !fileMode(); });
   try { $("tok").value = localStorage.getItem("token") || ""; } catch {}
 
   async function listDevices() {
     try {
       const devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "audioinput");
-      $("dev").innerHTML = `<option value="">Micrófono predeterminado</option>` + devs.map((d, i) => `<option value="${d.deviceId}">${d.label || `Entrada ${i + 1}`}</option>`).join("");
+      const current = $("dev").value;
+      $("dev").innerHTML = `<option value="">Micrófono predeterminado</option>` + devs.map((d, i) => `<option value="${d.deviceId}">${d.label || `Entrada ${i + 1}`}</option>`).join("")
+        + `<option value="__file__">Archivo de audio o video…</option>`;
+      $("dev").value = current;
     } catch {}
   }
   listDevices();
@@ -58,15 +71,26 @@
     const proto = location.protocol === "https:" ? "wss" : "ws";
     const token = encodeURIComponent($("tok").value);
     try { localStorage.setItem("token", $("tok").value); } catch {}
-    stream = await navigator.mediaDevices.getUserMedia({ audio: {
-      deviceId: $("dev").value || undefined, channelCount: 1,
-      // La voz de una charla ya viene procesada por la consola: no se aplica cancelación ni compresión.
-      echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
-    listDevices();
     ctx = new AudioContext({ sampleRate: 16000 });
     await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([worklet], { type: "text/javascript" })));
-    const src = ctx.createMediaStreamSource(stream);
     node = new AudioWorkletNode(ctx, "tap");
+    let src;
+    if (fileMode()) {
+      // Un archivo se reproduce a velocidad real y se transmite igual que el sonido de la sala.
+      const file = $("file").files[0];
+      if (!file) throw new Error("elegí un archivo primero");
+      media = new Audio(URL.createObjectURL(file));
+      src = ctx.createMediaElementSource(media);
+      if ($("monitor").checked) src.connect(ctx.destination);
+      media.onended = () => { stop(); $("state").textContent = "El archivo terminó"; };
+    } else {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: {
+        deviceId: $("dev").value || undefined, channelCount: 1,
+        // La voz de una charla ya viene procesada por la consola: no se aplica cancelación ni compresión.
+        echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+      listDevices();
+      src = ctx.createMediaStreamSource(stream);
+    }
     src.connect(node);
     ws = new WebSocket(`${proto}://${location.host}/api/sessions/${encodeURIComponent(sid)}/audio?token=${token}`);
     ws.binaryType = "arraybuffer";
@@ -82,7 +106,7 @@
       }
       $("lvl").style.width = `${Math.min(100, peak * 140)}%`;
     };
-    ws.onopen = () => { $("state").textContent = "Transmitiendo"; };
+    ws.onopen = () => { $("state").textContent = "Transmitiendo"; media?.play(); };
     ws.onclose = (e) => {
       $("state").textContent = e.code === 4401 ? "Token incorrecto" : e.code === 4404 ? "Esta sala no recibe audio del navegador (source: browser)" : "Conexión cortada";
       if (running) stop();
@@ -94,6 +118,7 @@
   function stop() {
     running = false;
     ws?.close(); node?.disconnect(); ctx?.close(); stream?.getTracks().forEach((t) => t.stop());
+    if (media) { media.onended = null; media.pause(); media = null; }
     $("go").textContent = "Empezar a transmitir";
     $("lvl").style.width = "0";
   }

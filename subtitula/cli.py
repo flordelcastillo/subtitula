@@ -18,10 +18,25 @@ from pathlib import Path
 from .config import SessionConfig, load_config
 
 
+def load_dotenv(path: str | Path = ".env") -> None:
+    """Carga KEY=valor de .env sin pisar variables ya definidas en el entorno."""
+    path = Path(path)
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.removeprefix("export ").partition("=")
+        value = value.strip().strip('"').strip("'")
+        if key.strip() and value:
+            os.environ.setdefault(key.strip(), value)
+
+
 def _common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--config", default=os.environ.get("SUBTITULA_CONFIG", "config/sessions.yaml"))
     p.add_argument("--glossary", default=os.environ.get("SUBTITULA_GLOSSARY", "config/glossary.yaml"))
-    p.add_argument("--engine", help="gemini (por defecto), local o fake")
+    p.add_argument("--engine", help="gemini-live (por defecto), gemini, local o fake")
     p.add_argument("-v", "--verbose", action="store_true")
 
 
@@ -39,7 +54,7 @@ def _serve(args, run_workers: bool) -> None:
 
 async def _worker(args) -> None:
     from .engines import create_engine
-    from .worker import HttpPublisher, SessionWorker
+    from .worker import HttpPublisher, worker_class
 
     cfg = load_config(args.config, args.glossary)
     session = cfg.session(args.session) or SessionConfig(id=args.session, name=args.name or args.session)
@@ -49,7 +64,7 @@ async def _worker(args) -> None:
         sys.exit(f"La sesión {args.session} no tiene fuente: pasala con --source")
     engine = create_engine(args.engine or cfg.engine)
     publisher = HttpPublisher(args.hub, os.environ.get("SUBTITULA_TOKEN", ""))
-    worker = SessionWorker(session, engine, publisher, cfg.languages, [*cfg.glossary])
+    worker = worker_class(engine)(session, engine, publisher, cfg.languages, [*cfg.glossary, *session.glossary])
     print(f"[{session.id}] {session.source} → {args.hub} (motor {engine.name})", flush=True)
     await worker.run()
 
@@ -57,30 +72,74 @@ async def _worker(args) -> None:
 async def _file(args) -> None:
     from .captions import Caption, to_srt, to_txt, to_vtt
     from .engines import create_engine
-    from .worker import SessionWorker
+    from .worker import worker_class
 
     cfg = load_config(args.config, args.glossary)
     path = Path(args.path)
     session = SessionConfig(id=path.stem, name=args.name or path.stem, source=str(path),
                             language=args.language, realtime=args.realtime)
     languages = args.languages.split(",") if args.languages else cfg.languages
-    caps: list[Caption] = []
     show = args.show
 
     class Printer:
-        async def caption(self, cap: Caption) -> None:
-            caps.append(cap)
-            line = cap.in_lang(show)
-            print(f"\033[2m{cap.start:7.1f}s {cap.lang} {cap.latency_ms:5d}ms\033[0m  {line}", flush=True)
-            if show == "original" and args.both:
+        """Imprime cada línea cuando ya quedó dos líneas atrás: para entonces el original y la
+        traducción están completos. La exportación final siempre usa la última versión."""
+
+        def __init__(self):
+            self.by_seq: dict[int, Caption] = {}
+            self.printed: set[int] = set()
+
+        def _print(self, cap: Caption) -> None:
+            self.printed.add(cap.seq)
+            if cap.track:
+                # Motor en vivo: cada idioma es su propia pista de líneas.
+                if args.both or cap.visible_in(show):
+                    color = "" if cap.original else "\033[33m"
+                    print(f"\033[2m{cap.start:7.1f}s {cap.track:3} {cap.latency_ms:5d}ms\033[0m  {color}{cap.text}\033[0m",
+                          flush=True)
+                return
+            print(f"\033[2m{cap.start:7.1f}s {cap.lang:3} {cap.latency_ms:5d}ms\033[0m  {cap.in_lang(show)}", flush=True)
+            if args.both:
                 for lang, text in cap.tr.items():
-                    print(f"{'':22}\033[33m{lang}\033[0m  {text}", flush=True)
+                    delay = f"{cap.tr_latency_ms:5d}ms" if cap.tr_latency_ms else ""
+                    print(f"\033[2m{'':8}{lang:3} {delay:>7}\033[0m  \033[33m{text}\033[0m", flush=True)
+
+        def flush(self, final: bool = False) -> None:
+            seqs = sorted(self.by_seq)
+            for i, seq in enumerate(seqs):
+                if seq in self.printed:
+                    continue
+                cap = self.by_seq[seq]
+                if cap.track:
+                    # Una línea de pista está completa cuando esa misma pista ya abrió otra.
+                    if final or any(self.by_seq[n].track == cap.track for n in seqs[i + 1:]):
+                        self._print(cap)
+                    continue
+                newer = len(seqs) - 1 - i
+                if final or newer >= 2:
+                    self._print(self.by_seq[seq])
+                else:
+                    break
+
+        async def caption(self, cap: Caption) -> int:
+            self.by_seq[cap.seq] = Caption.from_dict(cap.to_dict())
+            self.flush()
+            return cap.seq
 
         async def status(self, session: str, status: dict) -> None:
             return None
 
+    printer = Printer()
     engine = create_engine(args.engine or cfg.engine)
-    await SessionWorker(session, engine, Printer(), languages, cfg.glossary).run()
+    worker = worker_class(engine)(session, engine, printer, languages, cfg.glossary)
+    await worker.run()
+    st = worker.status()
+
+    def ms(v):
+        return f"{v / 1000:.1f} s" if v is not None else "sin datos"
+
+    printer.flush(final=True)
+    caps = [printer.by_seq[k] for k in sorted(printer.by_seq)]
     await engine.close()
     out = Path(args.out or path.parent)
     out.mkdir(parents=True, exist_ok=True)
@@ -88,9 +147,14 @@ async def _file(args) -> None:
         for ext, render in (("srt", to_srt), ("vtt", to_vtt), ("txt", to_txt)):
             (out / f"{path.stem}.{lang}.{ext}").write_text(render(caps, lang), encoding="utf-8")
     print(f"\n{len(caps)} subtítulos. Exportados en {out}/{path.stem}.<idioma>.srt|vtt|txt")
+    print(f"Demora del original p50 {ms(st['latency_p50_ms'])}, p90 {ms(st['latency_p90_ms'])}; "
+          f"traducción p50 {ms(st['translation_p50_ms'])}, p90 {ms(st['translation_p90_ms'])}. "
+          f"Tokens: {st['input_tokens']} de entrada, {st['output_tokens']} de salida.")
+
 
 
 def main(argv: list[str] | None = None) -> None:
+    load_dotenv()
     parser = argparse.ArgumentParser(prog="subtitula", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)

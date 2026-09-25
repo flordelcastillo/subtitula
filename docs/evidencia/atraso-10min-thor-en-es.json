@@ -1,0 +1,105 @@
+{
+  "archivo": "Thor Schaeff, Nerdearla 2025 (youtube.com/watch?v=GkVjMxYi5gA), minutos 10 a 20",
+  "minutos": 11,
+  "lineas_por_pista": {
+    "en": 154,
+    "es": 158
+  },
+  "original_p50_ms": 338,
+  "original_p90_ms": 901,
+  "traduccion_p50_ms": 343,
+  "traduccion_p90_ms": 891,
+  "errores": 0,
+  "reconexiones": 1,
+  "costo_usd": 0.372,
+  "por_minuto": [
+    {
+      "minuto": 1,
+      "original_p50_ms": 638,
+      "original_p90_ms": 1155,
+      "traduccion_p50_ms": 646,
+      "traduccion_p90_ms": 646,
+      "frases_medidas": 6
+    },
+    {
+      "minuto": 2,
+      "original_p50_ms": 256,
+      "original_p90_ms": 406,
+      "traduccion_p50_ms": 317,
+      "traduccion_p90_ms": 349,
+      "frases_medidas": 9
+    },
+    {
+      "minuto": 3,
+      "original_p50_ms": 338,
+      "original_p90_ms": 949,
+      "traduccion_p50_ms": 384,
+      "traduccion_p90_ms": 661,
+      "frases_medidas": 11
+    },
+    {
+      "minuto": 4,
+      "original_p50_ms": 222,
+      "original_p90_ms": 344,
+      "traduccion_p50_ms": 264,
+      "traduccion_p90_ms": 436,
+      "frases_medidas": 13
+    },
+    {
+      "minuto": 5,
+      "original_p50_ms": 690,
+      "original_p90_ms": 690,
+      "traduccion_p50_ms": 263,
+      "traduccion_p90_ms": 494,
+      "frases_medidas": 5
+    },
+    {
+      "minuto": 6,
+      "original_p50_ms": 366,
+      "original_p90_ms": 648,
+      "traduccion_p50_ms": 266,
+      "traduccion_p90_ms": 657,
+      "frases_medidas": 7
+    },
+    {
+      "minuto": 7,
+      "original_p50_ms": 282,
+      "original_p90_ms": 767,
+      "traduccion_p50_ms": 137,
+      "traduccion_p90_ms": 1125,
+      "frases_medidas": 6
+    },
+    {
+      "minuto": 8,
+      "original_p50_ms": 719,
+      "original_p90_ms": 1726,
+      "traduccion_p50_ms": 891,
+      "traduccion_p90_ms": 2113,
+      "frases_medidas": 15
+    },
+    {
+      "minuto": 9,
+      "original_p50_ms": 301,
+      "original_p90_ms": 608,
+      "traduccion_p50_ms": 394,
+      "traduccion_p90_ms": 779,
+      "frases_medidas": 12
+    },
+    {
+      "minuto": 10,
+      "original_p50_ms": 318,
+      "original_p90_ms": 354,
+      "traduccion_p50_ms": 340,
+      "traduccion_p90_ms": 457,
+      "frases_medidas": 9
+    },
+    {
+      "minuto": 11,
+      "original_p50_ms": 374,
+      "original_p90_ms": 374,
+      "traduccion_p50_ms": 222,
+      "traduccion_p90_ms": 222,
+      "frases_medidas": 3
+    }
+  ]
+}

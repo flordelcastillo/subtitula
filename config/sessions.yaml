@@ -2,8 +2,9 @@
 event: Nerdearla 2026
 # Idiomas de salida. La vista de audiencia ofrece además el "original" de cada tramo.
 languages: [es, en, pt]
-# gemini (por defecto), local (faster-whisper + Gemma por Ollama) o fake (pruebas sin modelo)
-engine: gemini
+# gemini-live (interpretación simultánea con la Live API, por defecto), gemini (por tramos),
+# local (faster-whisper + Gemma por Ollama) o fake (pruebas sin modelo)
+engine: gemini-live
 data_dir: data
 
 sessions:
@@ -14,7 +15,8 @@ sessions:
     source: samples/thor-schaeff-multilingual-agents-en.mp3
     language: en
     loop: true
-    glossary: [ElevenLabs, Thor Schaeff, Gemini]
+    # "Término = alias, alias": las formas que suele escribir el reconocedor se corrigen a la canónica.
+    glossary: ["ElevenLabs = 11 labs, Eleven Laps", Thor Schaeff, Gemini]
 
   - id: sala-b
     name: "Programming is dead. Long live programming!"
@@ -24,6 +26,14 @@ sessions:
     language: es
     loop: true
     glossary: [midudev, JavaScript, Cursor, Claude Code]
+
+  - id: sala-c
+    name: "Tu audio: subí un archivo o usá el micrófono"
+    topic: Sala de prueba que recibe audio desde el navegador
+    # Se transmite desde /enviar/sala-c (micrófono o archivo). La sesión Live se abre recién cuando
+    # llega audio, así que mientras nadie la usa no cuesta nada.
+    source: browser
+    language: auto
 
   # Más ejemplos de fuentes (descomentar y ajustar):
   # - id: auditorio

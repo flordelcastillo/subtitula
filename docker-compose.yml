@@ -7,7 +7,7 @@ x-worker: &worker
   depends_on: [hub]
   environment:
     GEMINI_API_KEY: ${GEMINI_API_KEY}
-    SUBTITULA_TOKEN: ${SUBTITULA_TOKEN:-cambiame}
+    SUBTITULA_TOKEN: ${SUBTITULA_TOKEN:?Definí SUBTITULA_TOKEN en .env (una contraseña larga)}
     SUBTITULA_HUB: http://hub:8000
 
 services:
@@ -17,7 +17,7 @@ services:
     command: ["subtitula", "hub", "--port", "8000"]
     ports: ["8000:8000"]
     environment:
-      SUBTITULA_TOKEN: ${SUBTITULA_TOKEN:-cambiame}
+      SUBTITULA_TOKEN: ${SUBTITULA_TOKEN:?Definí SUBTITULA_TOKEN en .env (una contraseña larga)}
       SUBTITULA_PUBLIC_URL: ${SUBTITULA_PUBLIC_URL:-http://localhost:8000}
     volumes: ["subtitula-data:/data"]
 

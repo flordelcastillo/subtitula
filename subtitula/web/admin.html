@@ -16,8 +16,11 @@
   .scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: .75rem; }
   table { border-collapse: collapse; width: 100%; min-width: 64rem; font-variant-numeric: tabular-nums; }
   th, td { text-align: left; padding: .7rem .8rem; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { font-weight: 400; color: var(--muted); font-size: .9rem; background: var(--surface); }
+  th { font-weight: 400; color: var(--muted); font-size: .9rem; background: var(--surface); position: sticky; top: 0; z-index: 1; }
+  tbody tr { transition: background-color .15s var(--ease); }
+  tbody tr:hover td { background: var(--tint); }
   td.num, th.num { text-align: right; }
+  td.num { white-space: nowrap; }
   tr.alert td:first-child { box-shadow: inset 4px 0 0 var(--bad); }
   tr:last-child td { border-bottom: 0; }
   .name { font-weight: 700; }
@@ -25,12 +28,15 @@
   .links { display: flex; flex-wrap: wrap; gap: .25rem .8rem; margin-top: .3rem; font-size: .9rem; }
   .links a { color: var(--muted); }
   .links a:hover { color: var(--fg); }
-  .state { display: inline-flex; align-items: center; gap: .45rem; }
+  .state { display: inline-flex; align-items: center; gap: .45rem; white-space: nowrap; }
+  th:nth-child(2), td:nth-child(2) { min-width: 12rem; }
+  th:first-child, td:first-child { min-width: 18rem; }
   .meter { width: 7rem; height: .5rem; background: var(--surface); border-radius: 999px; overflow: hidden; margin-top: .35rem; }
   .meter i { display: block; height: 100%; background: var(--ok); transition: width .3s linear; }
   .bad { color: var(--bad); }
   .err { color: var(--bad); font-size: .85rem; max-width: 22rem; overflow-wrap: anywhere; }
   details summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
+  textarea.about { min-height: 3rem; }
   textarea { width: 100%; min-width: 16rem; min-height: 6rem; background: var(--bg); border: 1px solid var(--line); border-radius: .5rem; padding: .5rem; margin: .5rem 0; }
   .token { display: flex; gap: .5rem; align-items: center; color: var(--muted); font-size: .9rem; }
   .token input { background: var(--surface); border: 1px solid var(--line); border-radius: .5rem; padding: .3rem .6rem; width: 12rem; }
@@ -54,18 +60,20 @@
   <div class="scroll">
     <table>
       <thead><tr>
-        <th>Sala</th><th>Estado</th><th>Audio</th><th class="num">Latencia p50 / p90</th>
+        <th>Sala</th><th>Estado</th><th>Audio</th><th class="num">Original p50 / p90</th>
         <th class="num">Subtítulos</th><th class="num">Errores</th><th class="num">Público</th><th class="num">Costo</th><th>Glosario</th>
       </tr></thead>
       <tbody id="rows"></tbody>
     </table>
   </div>
-  <p class="sub">La latencia se mide desde que termina el tramo de audio hasta que el subtítulo está publicado. El costo sale de los tokens que informa el modelo, con los precios de <code>SUBTITULA_PRICE_*</code>.</p>
+  <p class="sub">Con el motor en vivo, la demora va desde que el orador hace una pausa hasta que llega la última palabra de esa frase. Con el motor por tramos, desde que termina el tramo de audio hasta que se publica. El costo sale de los tokens que informa cada modelo y sus precios oficiales (<code>subtitula/pricing.py</code>).</p>
 </div>
 <div class="qr" id="qr" hidden><figure><img alt=""><figcaption></figcaption></figure></div>
 
 <script>
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  // Un archivo se muestra por su nombre; una URL o un dispositivo, tal cual.
+  const shortSrc = (src) => (src.includes("://") || !src.includes("/")) ? src : src.split("/").pop();
   const STATE = { live: "En vivo", connecting: "Esperando audio", reconnecting: "Reconectando", ended: "Terminó", stopped: "Detenida", offline: "Sin worker" };
   const tokenInput = document.getElementById("token");
   try { tokenInput.value = localStorage.getItem("token") || ""; } catch {}
@@ -78,28 +86,33 @@
 
   function row(s) {
     const silent = s.state === "live" && s.silent_for_s > 20;
-    const alert = s.state !== "live" && s.state !== "ended" || silent || (s.latency_p90_ms || 0) > 6000 || (s.dropped || 0) > 0;
+    const alert = s.state !== "live" && s.state !== "ended" || silent || (s.latency_p90_ms || 0) > 6000 || (s.dropped || 0) > 0 || (s.translations_pending || 0) > 8;
     const level = s.level_dbfs == null ? 0 : Math.max(0, Math.min(100, (s.level_dbfs + 60) * 100 / 60));
     const id = encodeURIComponent(s.id);
     const links = [
       `<a href="/s/${id}" target="_blank">Ver</a>`,
       `<a href="/overlay/${id}?lang=es" target="_blank">Overlay OBS</a>`,
+      `<a href="/pantalla/${id}?lang=es&lang2=en" target="_blank">Pantalla</a>`,
       `<a href="#" data-qr="${esc(s.id)}" data-name="${esc(s.name)}">QR</a>`,
       `<a href="/api/sessions/${id}/export.srt?lang=es">SRT</a>`,
       s.source === "browser" ? `<a href="/enviar/${id}" target="_blank">Enviar audio</a>` : "",
     ].join("");
     return `<tr class="${alert ? "alert" : ""}" data-id="${esc(s.id)}">
-      <td><div class="name">${esc(s.name)}</div><div class="sub">${esc(s.id)}${s.source ? `, ${esc(s.source)}` : ""}</div><div class="links">${links}</div></td>
-      <td><span class="state"><span class="dot ${dotFor(s.state)}"></span>${STATE[s.state] || esc(s.state)}</span><div class="sub">${s.engine ? `motor ${esc(s.engine)}` : ""}</div></td>
+      <td><div class="name">${esc(s.name)}</div><div class="sub">${esc(s.id)}${s.source ? `, ${esc(shortSrc(s.source))}` : ""}</div><div class="links">${links}</div></td>
+      <td><span class="state"><span class="dot ${dotFor(s.state)}"></span>${STATE[s.state] || esc(s.state)}</span><div class="sub">${s.engine ? `motor ${esc(s.engine)}` : ""}</div>${s.live_sessions ? `<div class="sub${s.live_sessions.split("/")[0] !== s.live_sessions.split("/")[1] ? " bad" : ""}">sesiones Live ${esc(s.live_sessions)}${s.reconnects ? `, ${s.reconnects} reconexiones` : ""}</div>` : ""}${(s.idle_langs || []).length ? `<div class="sub">sin público: ${esc(s.idle_langs.join(", "))} (en espera)</div>` : ""}${s.paused ? `<div class="sub">en pausa por silencio</div>` : ""}${s.lag_cuts ? `<div class="sub">${s.lag_cuts} ${s.lag_cuts === 1 ? "corte" : "cortes"} por atraso (retomó en vivo)</div>` : ""}${s.saved_audio_s ? `<div class="sub">${Math.round(s.saved_audio_s / 60)} min de audio no enviados</div>` : ""}</td>
       <td>${s.level_dbfs != null ? `${s.level_dbfs} dBFS` : "–"}<div class="meter"><i style="width:${level}%"></i></div>
         ${silent ? `<div class="bad">${Math.round(s.silent_for_s)} s sin audio</div>` : ""}</td>
-      <td class="num">${ms(s.latency_p50_ms)} / ${ms(s.latency_p90_ms)}</td>
+      <td class="num">${ms(s.latency_p50_ms)} / ${ms(s.latency_p90_ms)}
+        ${s.translation_p50_ms != null ? `<div class="sub">traducción ${ms(s.translation_p50_ms)} / ${ms(s.translation_p90_ms)}</div>` : ""}
+        ${s.translations_pending ? `<div class="sub">${s.translations_pending} en cola</div>` : ""}</td>
       <td class="num">${s.captions ?? 0}<div class="sub">${s.audio_s ? `${Math.round(s.audio_s / 60)} min de audio` : ""}</div></td>
       <td class="num">${(s.errors || 0) + (s.dropped || 0)}${s.dropped ? `<div class="sub">${s.dropped} tramos salteados</div>` : ""}${s.last_error ? `<div class="err" title="${esc(s.last_error)}">${esc(s.last_error.slice(0, 90))}</div>` : ""}</td>
-      <td class="num">${s.viewers ?? 0}</td>
+      <td class="num">${s.viewers ?? 0}${s.listeners ? `<div class="sub">${s.listeners} escuchando</div>` : ""}</td>
       <td class="num">${s.cost_usd != null ? `US$ ${s.cost_usd.toFixed(3)}` : "–"}<div class="sub">${s.cost_usd_per_hour != null ? `US$ ${s.cost_usd_per_hour}/h` : ""}</div></td>
       <td><details ${open.has(s.id) ? "open" : ""}><summary>${(s.glossary || []).length} términos</summary>
         <textarea aria-label="Glosario de ${esc(s.name)}, un término por línea">${esc((s.glossary || []).join("\n"))}</textarea>
+        <textarea class="about" aria-label="Descripción de la charla (opcional)" placeholder="Opcional: pegá la descripción de la charla de la agenda"></textarea>
+        <button class="btn" data-suggest="${esc(s.id)}">Sugerir con IA</button>
         <button class="btn" data-save="${esc(s.id)}">Guardar glosario</button> <span class="sub" data-msg></span></details></td>
     </tr>`;
   }
@@ -112,7 +125,7 @@
       const cost = d.sessions.reduce((a, s) => a + (s.cost_usd || 0), 0);
       const perHour = d.sessions.reduce((a, s) => a + (s.cost_usd_per_hour || 0), 0);
       document.getElementById("summary").innerHTML =
-        `<span><b>${live}/${d.sessions.length}</b>salas en vivo</span><span><b>${d.viewers}</b>personas leyendo</span>` +
+        `<span><b>${live}/${d.sessions.length}</b>salas en vivo</span><span><b>${d.viewers}</b>personas leyendo</span><span><b>${d.listeners || 0}</b>escuchando</span>` +
         `<span><b>US$ ${cost.toFixed(2)}</b>gastado${perHour ? `, US$ ${perHour.toFixed(2)}/h` : ""}</span>`;
       const tbody = document.getElementById("rows");
       // No se redibuja una fila mientras alguien edita su glosario.
@@ -138,6 +151,22 @@
       return;
     }
     if (e.target.closest("#qr")) { document.getElementById("qr").hidden = true; return; }
+    const suggest = e.target.closest("[data-suggest]");
+    if (suggest) {
+      // Gemini propone términos a partir del título, el orador y el tema; quien opera revisa y guarda.
+      const tr = suggest.closest("tr"), msg = tr.querySelector("[data-msg]"), box = tr.querySelector("textarea:not(.about)");
+      editing.add(suggest.dataset.suggest);
+      msg.textContent = "Buscando términos…";
+      const r = await fetch(`/api/sessions/${encodeURIComponent(suggest.dataset.suggest)}/glossary/suggest`, {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokenInput.value}` },
+        body: JSON.stringify({ text: tr.querySelector("textarea.about").value }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { msg.textContent = r.status === 401 ? "Token incorrecto" : (d.detail || `Error ${r.status}`); return; }
+      box.value = [box.value.trim(), ...d.suggested].filter(Boolean).join("\n");
+      msg.textContent = d.suggested.length ? `${d.suggested.length} términos sugeridos: revisalos y tocá Guardar` : "No hay términos nuevos para sugerir";
+      return;
+    }
     const save = e.target.closest("[data-save]");
     if (!save) return;
     const tr = save.closest("tr");

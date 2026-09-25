@@ -28,12 +28,18 @@ class EngineResult:
     tr: dict[str, str] = field(default_factory=dict)
     input_tokens: int = 0
     output_tokens: int = 0
+    model: str = ""
 
 
 class Engine:
     name = "base"
+    # Si es True, process() devuelve sólo la transcripción y translate() agrega las traducciones.
+    two_stage = False
 
     async def process(self, segment: Segment, ctx: EngineContext) -> EngineResult:
+        raise NotImplementedError
+
+    async def translate(self, text: str, lang: str, ctx: EngineContext) -> EngineResult:
         raise NotImplementedError
 
     async def close(self) -> None:
@@ -55,10 +61,13 @@ def create_engine(name: str) -> Engine:
     if name == "gemini":
         from .gemini import GeminiEngine
         return GeminiEngine()
+    if name == "gemini-live":
+        from ..live import LiveEngine
+        return LiveEngine()
     if name == "local":
         from .local import LocalEngine
         return LocalEngine()
     if name == "fake":
         from .fake import FakeEngine
         return FakeEngine()
-    raise ValueError(f"Motor desconocido: {name} (opciones: gemini, local, fake)")
+    raise ValueError(f"Motor desconocido: {name} (opciones: gemini-live, gemini, local, fake)")
