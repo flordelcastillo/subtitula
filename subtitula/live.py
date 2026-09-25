@@ -66,10 +66,20 @@ class LiveTrack:
         self.wanted = asyncio.Event()
         self.wanted.set()
         self.refresh = False  # el glosario cambió: reconectar ya, con el vocabulario nuevo
+        self.fresh = False  # el vigía la cortó por atraso: reabrir sin retomar ni arrastrar audio viejo
+        self.has_audio = asyncio.Event()  # no se abre sesión hasta que llega audio (salas de navegador)
+        self.connected_at = 0.0
+        self.last_in_at = 0.0
+        self.last_out_at = 0.0
+        self.last_cut_at = 0.0
+        self.chars_at_out = 0  # cuánto original había llegado cuando salió la última traducción
+        self.lag_cuts = 0
 
     def put(self, pcm: bytes | None) -> None:
         if pcm is not None and not self.wanted.is_set():
             return
+        if pcm is not None:
+            self.has_audio.set()
         try:
             self.queue.put_nowait(pcm)
         except asyncio.QueueFull:
@@ -98,11 +108,13 @@ class LiveTrack:
         backoff = 1.0
         while not self.worker.stopping:
             await self.wanted.wait()
+            await self.has_audio.wait()
             self.refresh = False  # la conexión nueva ya toma el glosario vigente
             released = False
             try:
                 async with engine.client.aio.live.connect(model=engine.model, config=self._config()) as session:
                     self.connected = True
+                    self.connected_at = time.time()
                     backoff = 1.0
                     sender = asyncio.create_task(self._send(session))
                     receiver = asyncio.create_task(self._receive(session))
@@ -129,6 +141,16 @@ class LiveTrack:
                 self.handle = None
             if self.worker.stopping:
                 return
+            if released and self.fresh and self.wanted.is_set():
+                # Cortada por atraso: sesión nueva, sin contexto viejo ni audio acumulado.
+                self.fresh = self.refresh = False
+                self.handle = None
+                while not self.queue.empty():
+                    self.queue.get_nowait()
+                self.worker.builders[self.target].close()
+                if self.primary:
+                    self.worker.original.close()
+                continue
             if released and self.refresh and self.wanted.is_set():
                 self.refresh = False
                 log.info("[%s/%s] glosario nuevo: reconecto retomando el contexto", self.worker.session.id, self.target)
@@ -171,8 +193,11 @@ class LiveTrack:
             if not sc:
                 continue
             if self.primary and sc.input_transcription and sc.input_transcription.text:
+                self.last_in_at = time.time()
                 await self.worker.on_original(sc.input_transcription.text, sc.input_transcription.language_code)
             if sc.output_transcription and sc.output_transcription.text:
+                self.last_out_at = time.time()
+                self.chars_at_out = self.worker.original_chars
                 await self.worker.on_translation(self.target, sc.output_transcription.text)
             # La sesión también devuelve la interpretación hablada: se reparte a quien la escucha.
             if sc.model_turn:
@@ -199,6 +224,8 @@ class TrackBuilder:
         self.first_at = 0.0  # cuándo llegó el primer fragmento de la línea abierta
         self.last_at = 0.0
         self.last_end = 0.0
+        self.last_lag_ms = 0
+        self.last_lag_at = 0.0
 
     async def add(self, delta: str, lang: str) -> None:
         # Un fragmento puede traer el final de una oración y el comienzo de otra: se corta ahí.
@@ -238,6 +265,7 @@ class TrackBuilder:
         if self.current is not None:
             lag = self.worker._pause_lag(self.last_at)
             if lag:
+                self.last_lag_ms, self.last_lag_at = lag, self.last_at
                 self.current.latency_ms = lag
                 (self.worker.latencies if self.original else self.worker.tr_latencies).append(lag)
             self.last_end = self.current.end
@@ -278,6 +306,12 @@ class LiveSessionWorker(SessionWorker):
         self.on_demand = os.environ.get("SUBTITULA_ON_DEMAND", "1") != "0"
         self.linger_s = float(os.environ.get("SUBTITULA_LINGER_S", "120"))
         self.demand_until: dict[str, float] = {}
+        # Vigía: nunca quedar atrasado. Mejor cortar y retomar en vivo que acumular segundos de atraso.
+        self.stall_s = float(os.environ.get("SUBTITULA_STALL_S", "10"))
+        self.stall_chars = int(os.environ.get("SUBTITULA_STALL_CHARS", "150"))  # ~2 líneas de original sin traducir
+        self.original_chars = 0
+        self.max_lag_ms = int(float(os.environ.get("SUBTITULA_MAX_LAG_S", "6")) * 1000)
+        self.voice: deque[float] = deque(maxlen=400)  # momentos (cada 100 ms) con voz en el audio
 
     # -- demanda y silencio ----------------------------------------------------------------------
 
@@ -303,6 +337,7 @@ class LiveSessionWorker(SessionWorker):
             self._silent_s += chunk_s
         else:
             self._silent_s = 0.0
+            self.voice.append(time.time())
         if self._silent_s > self.pause_after_s:
             self.paused = True
             self.saved_audio_s += chunk_s * len(self.tracks)
@@ -395,6 +430,7 @@ class LiveSessionWorker(SessionWorker):
     async def on_original(self, delta: str, lang_code: str | None) -> None:
         async with self._lock:
             lang = self.source_lang or (lang_code or "und")[:2].lower()
+            self.original_chars += len(delta)
             await self.original.add(delta, lang)
             if self.original.current is not None:
                 self.previous.append(self.original.current.text)
@@ -417,6 +453,35 @@ class LiveSessionWorker(SessionWorker):
                 for builder in (self.original, *self.builders.values()):
                     if builder.idle(now):
                         builder.close()
+                self._watchdog(now)
+
+    def _watchdog(self, now: float) -> None:
+        """Corta y reabre una sesión trabada o atrasada, para que los subtítulos vuelvan a estar en vivo."""
+        voice = sum(1 for t in self.voice if t > now - self.stall_s) / (self.stall_s * 10)
+        original_flowing = self.original.last_at and now - self.original.last_at < 3
+        for track in self.tracks:
+            if (not track.connected or track.refresh or now - track.connected_at < self.stall_s + 2
+                    or now - track.last_cut_at < 20):
+                continue
+            reason = ""
+            builder = self.builders[track.target]
+            if track.primary and voice > 0.5 and now - max(track.last_in_at, track.connected_at) > self.stall_s:
+                reason = f"hay voz y no llega el original hace {self.stall_s:.0f} s"
+            elif (original_flowing and now - max(track.last_out_at, track.connected_at) > self.stall_s
+                  and self.original_chars - track.chars_at_out > self.stall_chars):
+                # Una oración larga puede demorar la traducción; dos líneas de original sin traducir, no.
+                reason = f"el original avanzó {self.original_chars - track.chars_at_out} caracteres sin traducción"
+            elif builder.last_lag_ms > self.max_lag_ms and now - builder.last_lag_at < 5:
+                reason = f"la traducción llegó {builder.last_lag_ms / 1000:.1f} s tarde"
+            elif (track.primary and self.original.last_lag_ms > self.max_lag_ms
+                  and now - self.original.last_lag_at < 5):
+                reason = f"el original llegó {self.original.last_lag_ms / 1000:.1f} s tarde"
+            if reason:
+                track.fresh = track.refresh = True
+                track.last_cut_at = now
+                track.lag_cuts += 1
+                self.last_error = f"sesión {track.target} cortada y retomada en vivo: {reason}"
+                log.warning("[%s/%s] %s: corto y retomo en vivo", self.session.id, track.target, reason)
 
     def _pause_lag(self, last_at: float) -> int:
         """Demora entre que el orador se calla y que llega la última palabra de esa frase.
@@ -451,6 +516,7 @@ class LiveSessionWorker(SessionWorker):
         data["paused"] = self.paused
         data["saved_audio_s"] = round(self.saved_audio_s, 1)
         data["reconnects"] = sum(t.reconnects for t in self.tracks)
+        data["lag_cuts"] = sum(t.lag_cuts for t in self.tracks)
         data["speech_langs"] = [t.target for t in self.tracks] if hasattr(self.publisher, "speech") else []
         return data
 

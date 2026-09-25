@@ -151,6 +151,62 @@ async def test_live_tracks_apply_glossary_and_hot_reload():
     assert out.track("es") == ["Bienvenidos a Nerdearla en el Konex."]
 
 
+def _connected(track, now, age=30):
+    track.connected = True
+    track.connected_at = now - age
+
+
+async def test_watchdog_cuts_a_stalled_or_late_translation():
+    """Mejor cortar y retomar en vivo que acumular atraso (lo que pidió la organización)."""
+    worker, _ = make_worker()
+    es, pt = worker.tracks
+    now = time.time()
+    for t in (es, pt):
+        _connected(t, now)
+        t.last_in_at = t.last_out_at = now - 1
+    worker.original.last_at = now - 1  # el original sigue llegando
+
+    pt.last_out_at = now - 12  # pero el portugués no avanza hace 12 s
+    worker.original_chars = 100  # una oración larga todavía no alcanza para cortar
+    worker._watchdog(now)
+    assert not pt.fresh
+    worker.original_chars = 200  # dos líneas de original sin traducir: está trabada
+    worker._watchdog(now)
+    assert pt.fresh and pt.refresh and pt.lag_cuts == 1
+    assert not es.fresh
+    assert "cortada y retomada en vivo" in worker.last_error
+
+    pt.refresh = pt.fresh = False
+    worker._watchdog(now + 1)  # espera entre cortes: no vuelve a cortar enseguida
+    assert pt.lag_cuts == 1
+
+    worker.builders["es"].last_lag_ms, worker.builders["es"].last_lag_at = 7000, now - 1
+    worker._watchdog(now)
+    assert es.fresh and es.lag_cuts == 1  # la última frase llegó 7 s tarde
+
+
+async def test_watchdog_leaves_silent_rooms_alone_and_catches_a_stalled_original():
+    worker, _ = make_worker()
+    es = worker.tracks[0]
+    now = time.time()
+    _connected(es, now)
+    es.last_in_at = es.last_out_at = now - 30
+    worker.original.last_at = now - 30
+    worker._watchdog(now)  # nadie habla: nada que cortar
+    assert not es.fresh
+    worker.voice.extend(now - i * 0.1 for i in range(80))  # 8 s de voz y el original no llega
+    worker._watchdog(now)
+    assert es.fresh and "no llega el original" in worker.last_error
+
+
+async def test_browser_room_opens_no_session_until_audio_arrives():
+    worker, _ = make_worker()
+    es = worker.tracks[0]
+    assert not es.has_audio.is_set()
+    es.put(b"\x00\x00" * 1600)
+    assert es.has_audio.is_set()
+
+
 async def test_pause_lag_measures_voice_to_text():
     worker, out = make_worker()
     now = time.time()

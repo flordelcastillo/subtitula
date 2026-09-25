@@ -26,6 +26,14 @@ sessions:
     loop: true
     glossary: [midudev, JavaScript, Cursor, Claude Code]
 
+  - id: sala-c
+    name: "Tu audio: subí un archivo o usá el micrófono"
+    topic: Sala de prueba que recibe audio desde el navegador
+    # Se transmite desde /enviar/sala-c (micrófono o archivo). La sesión Live se abre recién cuando
+    # llega audio, así que mientras nadie la usa no cuesta nada.
+    source: browser
+    language: auto
+
   # Más ejemplos de fuentes (descomentar y ajustar):
   # - id: auditorio
   #   name: Auditorio principal
