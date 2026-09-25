@@ -318,6 +318,7 @@ def create_app(config: AppConfig, token: str = "", run_workers: bool = False) ->
             hub.watch(watching, lang)
         return {
             "event": config.event,
+            "public_url": os.environ.get("SUBTITULA_PUBLIC_URL", "").rstrip("/"),
             "languages": [{"code": c, "name": LANG_NAMES.get(c, c)} for c in config.languages],
             "sessions": [hub.session_info(sid) for sid in hub.meta],
         }

@@ -108,8 +108,9 @@
 
   Promise.all(ROOMS.map((r) => fetch(`data/${r}.json`).then((res) => (res.ok ? res.json() : null)).then((d) => { if (d) data[r] = d; })))
     .then(() => {
-      room = ROOMS.find((r) => data[r]);
-      lang = data[room].targets[0];
+      const q = new URLSearchParams(location.search);
+      room = ROOMS.includes(q.get("room")) && data[q.get("room")] ? q.get("room") : ROOMS.find((r) => data[r]);
+      lang = tracksOf(data[room]).includes(q.get("lang")) ? q.get("lang") : data[room].targets[0];
       renderRooms();
       setSource(false);
       requestAnimationFrame(tick);

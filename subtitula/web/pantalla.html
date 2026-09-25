@@ -75,6 +75,7 @@
   const refreshHeader = () => fetch("/api/sessions").then((r) => r.json()).then((d) => {
     const s = d.sessions.find((x) => x.id === sid);
     if (!s) return;
+    if (d.public_url) document.getElementById("url").textContent = d.public_url.replace(/^https?:\/\//, "") + `/s/${sid}`;
     document.getElementById("name").textContent = s.name;
     document.getElementById("speaker").textContent = s.speaker || "";
     const nxt = s.agenda && s.agenda.next;
