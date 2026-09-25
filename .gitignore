@@ -1,7 +1,7 @@
 __pycache__/
 *.pyc
 *.egg-info/
-data/
+/data/
 .env
 .pytest_cache/
 out/
