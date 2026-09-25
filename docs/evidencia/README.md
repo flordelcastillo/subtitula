@@ -30,6 +30,8 @@ Los JSON de esa corrida están en `demo/data/`: cada actualización de subtítul
 
 ## Carga · Load
 
+`carga-50-salas-1000-personas.txt`: la misma prueba con `--stages 50 --viewers 20` (1.000 personas): 7.962 entregas por segundo, 53 ms p50, 234 ms p99, 0 errores, un núcleo entero. *Same test with 50 rooms and 1,000 viewers.*
+
 `carga-20-salas-500-personas.txt`: salida de `python scripts/loadtest.py --mode live --stages 20 --viewers 25 --seconds 45` en una notebook de 8 núcleos, todo en un solo proceso (hub más los 500 clientes de prueba). *Output of the load test on an 8-core laptop, hub and the 500 test clients in one process.*
 
 ## Cómo reproducir · How to reproduce

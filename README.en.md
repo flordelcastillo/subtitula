@@ -130,7 +130,7 @@ subtitula worker --session auditorium --hub http://hub:8000   # one per room, on
 python scripts/loadtest.py --mode live --stages 20 --viewers 25 --seconds 45
 ```
 
-`live` mode mimics the live engine: three tracks per room whose lines grow every 0.35 s, the most demanding traffic. On an 8-core laptop, in a single process: **20 rooms and 500 viewers, 169 updates per second and 190,050 deliveries (4,223 per second) with no errors; 4 ms p50 and 41 ms p99 from hub to screen**, using 45% of one core including the 500 test clients. Full output in [`docs/evidencia/carga-20-salas-500-personas.txt`](docs/evidencia/carga-20-salas-500-personas.txt).
+`live` mode mimics the live engine: three tracks per room whose lines grow every 0.35 s, the most demanding traffic. On an 8-core laptop, in a single process: **20 rooms and 500 viewers, 169 updates per second and 190,050 deliveries (4,223 per second) with no errors; 4 ms p50 and 41 ms p99 from hub to screen**, using 45% of one core including the 500 test clients. Full output in [`docs/evidencia/carga-20-salas-500-personas.txt`](docs/evidencia/carga-20-salas-500-personas.txt). With **50 rooms and 1,000 viewers** (400 updates and 7,962 deliveries per second) it still ran with no errors, at 53 ms p50 and 234 ms p99, using a full core: past that point, split rooms across workers and hubs ([`docs/evidencia/carga-50-salas-1000-personas.txt`](docs/evidencia/carga-50-salas-1000-personas.txt)).
 
 ## Operation during the event
 
