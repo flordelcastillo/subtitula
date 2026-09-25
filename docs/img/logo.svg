@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="96" viewBox="0 0 420 96" role="img" aria-label="Subtitula">
+  <title>Subtitula</title>
+  <!-- La barra ámbar es la marca de la línea en vivo, la misma que resalta el subtítulo actual en la app. -->
+  <rect x="8" y="14" width="10" height="68" rx="3" fill="#f4b54a"/>
+  <text x="36" y="68" font-family="Atkinson Hyperlegible Next, Atkinson Hyperlegible, system-ui, -apple-system, Segoe UI, sans-serif" font-size="58" font-weight="700" fill="#f3eee4" letter-spacing="-1">Subtitula</text>
+  <rect x="36" y="80" width="118" height="4" rx="2" fill="#f4b54a" opacity=".55"/>
+  <rect x="164" y="80" width="150" height="4" rx="2" fill="#9aa5c4" opacity=".35"/>
+</svg>

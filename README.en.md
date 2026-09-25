@@ -1,4 +1,4 @@
-# Subtitula
+<img src="docs/img/logo.svg" width="300" alt="Subtitula">
 
 [![tests](https://github.com/flordelcastillo/subtitula/actions/workflows/tests.yml/badge.svg)](https://github.com/flordelcastillo/subtitula/actions/workflows/tests.yml)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
