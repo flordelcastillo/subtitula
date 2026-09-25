@@ -6,7 +6,7 @@
 **Subtítulos e interpretación simultánea en vivo, open source, para conferencias con muchas salas a la vez.**
 *Live captions and simultaneous interpretation for multi-room conferences, open source.*
 
-**[Probá la demo](https://flordelcastillo.github.io/subtitula/)** (repetición de una corrida real, sin instalar nada) · [Vibeathon de Nerdearla 2026](https://nerdearla26.devpost.com) · [Evidencia medida](docs/evidencia) · [Los cinco criterios](#los-cinco-criterios-con-evidencia) · [English summary](#english-summary)
+**[Probá la demo](https://flordelcastillo.github.io/subtitula/)** (repetición de una corrida real, sin instalar nada) · [Vibeathon de Nerdearla 2026](https://nerdearla26.devpost.com) · [Evidencia medida](docs/evidencia) · [Los cinco criterios](#los-cinco-criterios-con-evidencia) · **[English version](README.en.md)**
 
 | El público, en su idioma | "¿Qué me perdí?" | Pantalla de sala con QR | Panel de producción |
 |---|---|---|---|
@@ -277,7 +277,7 @@ pip install -e '.[dev]'
 pytest
 ```
 
-Los tests (25, en CI en cada push) cubren:
+Los tests (29, en CI en cada push) cubren:
 
 - el segmentador con audio sintético y las exportaciones;
 - dos salas en paralelo de punta a punta y el motor en dos etapas;
