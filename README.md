@@ -11,7 +11,7 @@
 **Subtítulos e interpretación simultánea en vivo, open source, para conferencias con muchas salas a la vez.**
 *Live captions and simultaneous interpretation for multi-room conferences, open source.*
 
-**[Probá la demo](https://flordelcastillo.github.io/subtitula/)** (repetición de una corrida real, sin instalar nada) · [Vibeathon de Nerdearla 2026](https://nerdearla26.devpost.com) · [Evidencia medida](docs/evidencia) · [Los cinco criterios](#los-cinco-criterios-con-evidencia) · **[English version](README.en.md)**
+**[Probá la demo](https://flordelcastillo.github.io/subtitula/)** (repetición de una corrida real, sin instalar nada) · **[Video de 2 minutos](https://youtu.be/59H_dzXcG7s)** · [Vibeathon de Nerdearla 2026](https://nerdearla26.devpost.com) · [Evidencia medida](docs/evidencia) · [Los cinco criterios](#los-cinco-criterios-con-evidencia) · **[English version](README.en.md)**
 
 | El público, en su idioma | "¿Qué me perdí?" | Pantalla de sala con QR | Panel de producción |
 |---|---|---|---|
