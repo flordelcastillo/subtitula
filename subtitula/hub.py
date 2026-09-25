@@ -9,6 +9,8 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+from dataclasses import replace
+from datetime import datetime
 import logging
 import os
 import time
@@ -34,6 +36,9 @@ class Hub:
         self.config = config
         self.token = token
         self.meta: dict[str, SessionConfig] = {s.id: s for s in config.sessions}
+        # Copia de la configuración original: la agenda pisa name/speaker/topic/language en `meta`.
+        self.base_meta: dict[str, SessionConfig] = {s.id: replace(s) for s in config.sessions}
+        self.current_talk: dict[str, str | None] = {}
         self.glossary: dict[str, list[str]] = {
             s.id: list(dict.fromkeys([*config.glossary, *s.glossary])) for s in config.sessions}
         self.captions: dict[str, list[Caption]] = {}
@@ -133,6 +138,53 @@ class Hub:
 
     # -- vistas --------------------------------------------------------------------------------
 
+    # -- agenda --------------------------------------------------------------------------------
+
+    def apply_agenda(self, now: datetime | None = None) -> list[str]:
+        """Aplica la charla vigente de cada sala: nombre, orador, tema, idioma y glosario.
+
+        Devuelve las salas que cambiaron. Se llama cada pocos segundos desde el hub."""
+        changed = []
+        now = now or datetime.now()
+        self._agenda_now = now  # el mismo reloj para talk_info (y para los tests)
+        for sid, base in self.base_meta.items():
+            if not base.talks:
+                continue
+            current, _ = base.current_and_next(now)
+            key = current.id if current else None
+            if self.current_talk.get(sid, "?") == key:
+                continue
+            self.current_talk[sid] = key
+            meta = self.meta[sid]
+            meta.name = current.name if current else base.name
+            meta.speaker = (current.speaker if current else "") or base.speaker
+            meta.topic = (current.topic if current else "") or base.topic
+            language = (current.language if current else "") or base.language
+            self.set_glossary(sid, [*self.config.glossary, *base.glossary, *(current.glossary if current else [])])
+            worker = self.workers.get(sid)
+            if worker and language != meta.language and hasattr(worker, "set_language"):
+                worker.set_language(language)
+            meta.language = language
+            changed.append(sid)
+            log.info("[%s] agenda: %s", sid, current.name if current else "sin charla")
+        return changed
+
+    def talk_info(self, sid: str, now: datetime | None = None) -> dict:
+        base = self.base_meta.get(sid)
+        if not base or not base.talks:
+            return {}
+        now = now or getattr(self, "_agenda_now", None) or datetime.now()
+        current, upcoming = base.current_and_next(now)
+
+        def brief(t):
+            if not t:
+                return None
+            start, end = t.window(now)
+            return {"id": t.id, "name": t.name, "speaker": t.speaker, "start": start.strftime("%H:%M"),
+                    "end": end.strftime("%H:%M")}
+
+        return {"now": brief(current), "next": brief(upcoming)}
+
     def session_info(self, sid: str) -> dict:
         s = self.meta[sid]
         st = self.status.get(sid, {})
@@ -143,6 +195,7 @@ class Hub:
             "speaker": s.speaker,
             "topic": s.topic,
             "language": s.language,
+            "agenda": self.talk_info(sid),
             "state": st.get("state", "offline") if fresh else "offline",
             "viewers": len(self.subscribers.get(sid, ())),
             "listeners": sum(len(qs) for (s, _), qs in self.listeners.items() if s == sid),
@@ -201,6 +254,17 @@ def create_app(config: AppConfig, token: str = "", run_workers: bool = False) ->
                 hub.workers[s.id] = worker
                 tasks.append(asyncio.create_task(worker.run(), name=f"worker-{s.id}"))
             log.info("%d escenarios en marcha con el motor %s", len(tasks), config.engine)
+
+        async def agenda_loop():
+            while True:
+                try:
+                    hub.apply_agenda()
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("agenda: %s", exc)
+                await asyncio.sleep(10)
+
+        if any(s.talks for s in config.sessions):
+            tasks.append(asyncio.create_task(agenda_loop(), name="agenda"))
         yield
         for worker in hub.workers.values():
             worker.stop()

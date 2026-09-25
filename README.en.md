@@ -28,7 +28,7 @@ Today the conference captions talks with two commercial tools, one for Spanish t
 | **Quality** | Interpretation with Live Translate. Each room's glossary is sent as the recognizer's custom vocabulary, and its canonical spelling is enforced on every track, including the translation. Each language builds its own lines, cut at sentence ends with at most 84 characters (the 2 x 42 subtitling standard). Audience questions asked directly in the target language are echoed. The glossary can be suggested by AI from the talk's title, speaker and abstract | Final SRT files for 2 minutes of each sample talk in [`docs/evidencia/srt`](docs/evidencia/srt). Real example: "if I pipe the audio out on the HDMI, are you able to hear it on the stream?" → "Si saco el audio por el HDMI, ¿puedes escucharlo en la transmisión?" |
 | **Latency** | Word by word while the speaker talks. From the speaker's pause to the last word of that sentence: **0.34 s p50 and 0.7 to 0.9 s p90 for the original; 0.29 to 0.34 s p50 and 0.76 to 0.89 s p90 for the translation**. No accumulated drift over 10 continuous minutes (worst minute: 2.1 s p90). If a session still stalls, a watchdog reopens it live | [`docs/evidencia`](docs/evidencia), measured with [`scripts/drift_test.py`](scripts/drift_test.py) over 10 minutes of each sample talk |
 | **Scalability** | One stateless worker per room and a hub that only moves text. Unused languages open no session and silence is not streamed. Real cost per room in the dashboard | 4 simultaneous Live sessions against Gemini with 0 errors. Load test with word-by-word updates: 20 rooms and 500 viewers, 4,223 deliveries per second, 4 ms p50 from hub to screen ([Scale](#scale)) |
-| **Deployment and operation** | `pip install`, a key in `.env` and `subtitula serve`, or Docker Compose with one container per room. Rooms can send audio from a browser tab, microphone or file. Dashboard with audio level, p50/p90 latency, errors, sessions, lag cuts, cost, QR and a live-editable glossary. OBS/vMix overlay, `live.txt` for titles, chroma background, Prometheus `/metrics`. Room checklist for volunteers | [Operation](#operation-during-the-event) and [What if…](#what-if) |
+| **Deployment and operation** | `pip install`, a key in `.env` and `subtitula serve`, or Docker Compose with one container per room. Per-room agenda: title, speaker, language and glossary switch by themselves at each talk's time. Rooms can send audio from a browser tab, microphone or file. Dashboard with audio level, p50/p90 latency, errors, sessions, lag cuts, cost, QR and a live-editable glossary. OBS/vMix overlay, `live.txt` for titles, chroma background, Prometheus `/metrics`. Room checklist for volunteers | [Operation](#operation-during-the-event) and [What if…](#what-if) |
 | **Innovation** | **Listen to the interpretation** with headphones on your phone (Live Translate already generates and bills that voice). **"What did I miss?"**: a summary of the last 5 minutes in your language, made with Gemma 4. On-demand languages and a lag watchdog. Three engines: live, chunked and fully local | [Live demo](https://flordelcastillo.github.io/subtitula/), screenshots and demo video |
 | **Accessibility** (the challenge's goal) | Atkinson Hyperlegible type, a high-contrast mode (on by itself when the system asks for it), adjustable text size, light or dark theme, 44 px touch targets, full keyboard operation, interface in Spanish, English or Portuguese following the phone, and spoken interpretation for those who prefer to listen | Audience view reviewed against WCAG 2.2 AA; screenshots in `docs/img` |
 
@@ -141,7 +141,7 @@ python scripts/loadtest.py --mode live --stages 20 --viewers 25 --seconds 45
 - **HTTPS:** browsers only open the microphone on `localhost` or over HTTPS. To use `/enviar` from a room computer on another machine, put the hub behind a proxy with a certificate (for example [Caddy](https://caddyserver.com): `captions.event.org { reverse_proxy localhost:8000 }`, with `flush_interval -1` so SSE is not buffered). File upload works without HTTPS.
 - **Token:** `SUBTITULA_TOKEN` protects remote worker ingestion, browser audio and glossary edits. It is mandatory with Docker Compose.
 
-**Before:** load talks in `config/sessions.yaml`; in `/admin` use **Sugerir con IA** per room to get proper nouns and acronyms from the title and abstract, review and save; print or project each room's QR.
+**Before:** load rooms and their agenda (`talks`) in `config/sessions.yaml`; the hub applies each talk at its time; in `/admin` use **Sugerir con IA** per room to get proper nouns and acronyms from the title and abstract, review and save; print or project each room's QR.
 
 **Room checklist (5 minutes):** the room computer is wired to the desk and has `/enviar/<room>` open (or production confirms the stream is green); sound check moves the level meter in `/admin`; a phone scanning the QR shows the test sentence in Spanish; the TV shows `/pantalla/<room>`; the stream has `/overlay/<room>` as a browser source.
 
@@ -149,7 +149,24 @@ python scripts/loadtest.py --mode live --stages 20 --viewers 25 --seconds 45
 
 ## Configuration
 
-`config/sessions.yaml` lists the rooms (`id`, `name`, `speaker`, `topic`, `source`, `language`, per-room `glossary`); `config/glossary.yaml` holds the shared terms. A glossary entry can carry aliases: `"ElevenLabs = 11 labs, Eleven Laps"` fixes the recognizer's usual misspellings to the canonical form on every track.
+`config/sessions.yaml` lists the rooms (`id`, `name`, `speaker`, `topic`, `source`, `language`, per-room `glossary`); `config/glossary.yaml` holds the shared terms.
+
+**Per-room agenda.** A room can carry its list of talks with times; the hub switches name, speaker, topic, language and glossary by itself when the clock enters each slot, the room screen shows "Next", and after the last talk the room returns to its base configuration. Nobody touches anything between talks.
+
+```yaml
+  - id: auditorium
+    name: Auditorium
+    source: srt://0.0.0.0:9000?mode=listener
+    language: es
+    talks:
+      - { name: Opening, start: "09:30", end: "10:00", speaker: Ariel Jolo }
+      - name: "What's new in AI Audio?"
+        start: "12:10"          # local time; 2026-09-25T12:10 also works
+        end: "12:50"
+        speaker: Thor Schaeff
+        language: en             # Live sessions reopen in English
+        glossary: ["ElevenLabs = 11 labs", Gemini Live API]
+``` A glossary entry can carry aliases: `"ElevenLabs = 11 labs, Eleven Laps"` fixes the recognizer's usual misspellings to the canonical form on every track.
 
 | `source` value | Use |
 |---|---|
@@ -180,7 +197,7 @@ pip install -e '.[dev]'
 pytest
 ```
 
-30 tests run in CI on every push, without an API key. Guidance for coding agents and contributors: [AGENTS.md](AGENTS.md).
+34 tests run in CI on every push, without an API key. Guidance for coding agents and contributors: [AGENTS.md](AGENTS.md).
 
 ## How it was built
 

@@ -514,6 +514,14 @@ class LiveSessionWorker(SessionWorker):
         if assigned and assigned != cap.seq:
             cap.seq = assigned
 
+    def set_language(self, language: str) -> None:
+        """La agenda cambió el idioma de la sala: las sesiones se reabren con la pista nueva."""
+        self.session.language = language
+        self.source_lang = language if language not in ("", "auto") else ""
+        self.original.track = self.source_lang or "original"
+        for track in self.tracks:
+            track.refresh = True
+
     def set_glossary(self, terms: list[str]) -> bool:
         changed = super().set_glossary(terms)
         if changed:

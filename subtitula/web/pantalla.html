@@ -15,6 +15,8 @@
   html, body { height: 100%; overflow: hidden; }
   body { display: grid; grid-template-rows: auto 1fr auto; padding: 3vh 4vw; gap: 2vh; }
   header { display: flex; justify-content: space-between; align-items: baseline; gap: 2vw; color: var(--muted); font-size: 2.2vh; }
+  header #next { text-align: right; max-width: 40vw; }
+  header #next:not(:empty)::before { content: "Próxima "; color: var(--stage); }
   header strong { color: var(--fg); font-size: 3vh; }
   main { display: flex; flex-direction: column; justify-content: flex-end; gap: 3vh; min-height: 0; }
   .lane { overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; }
@@ -32,7 +34,7 @@
 </style>
 </head>
 <body>
-<header><strong id="name">Sala</strong><span id="speaker"></span></header>
+<header><div><strong id="name">Sala</strong> <span id="speaker"></span></div><span id="next"></span></header>
 <main>
   <div class="lane main-lane" id="main" aria-live="polite"><p class="empty">Los subtítulos aparecen acá apenas empiece la charla.</p></div>
   <div class="lane second-lane" id="second" hidden></div>
@@ -69,10 +71,17 @@
       render(l);
     }
   }
-  fetch("/api/sessions").then((r) => r.json()).then((d) => {
+  // Nombre, orador y próxima charla salen de la agenda del hub, que cambia sola por reloj.
+  const refreshHeader = () => fetch("/api/sessions").then((r) => r.json()).then((d) => {
     const s = d.sessions.find((x) => x.id === sid);
-    if (s) { document.getElementById("name").textContent = s.name; document.getElementById("speaker").textContent = s.speaker || ""; }
-  });
+    if (!s) return;
+    document.getElementById("name").textContent = s.name;
+    document.getElementById("speaker").textContent = s.speaker || "";
+    const nxt = s.agenda && s.agenda.next;
+    document.getElementById("next").textContent = nxt ? `${nxt.start}: ${nxt.name}${nxt.speaker ? `, ${nxt.speaker}` : ""}` : "";
+  }).catch(() => {});
+  refreshHeader();
+  setInterval(refreshHeader, 20000);
   // Avisa qué idiomas muestra: con idiomas bajo demanda, sus sesiones quedan abiertas.
   const ping = () => [lang, lang2].filter(Boolean).forEach((l) =>
     fetch(`/api/sessions?watching=${encodeURIComponent(sid)}&lang=${encodeURIComponent(l)}`).catch(() => {}));

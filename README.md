@@ -36,7 +36,7 @@ Subtitula is an open source live captioning and simultaneous interpretation syst
 | **Calidad** | Interpretación con Live Translate. El glosario de cada sala entra como vocabulario del reconocedor y, además, corrige la ortografía de nombres y términos en todas las pistas, incluida la traducción. Cada idioma arma sus propias líneas, cortadas por oración y con 84 caracteres como máximo (dos renglones de 42, la norma de subtitulado). Las preguntas del público en el idioma de destino se muestran tal cual | SRT completos del original y de cada traducción, de 2 minutos por charla, en [`docs/evidencia/srt`](docs/evidencia/srt). Ejemplo real: "if I pipe the audio out on the HDMI, are you able to hear it on the stream?" → "Si saco el audio por el HDMI, ¿puedes escucharlo en la transmisión?". Tests de glosario y de pistas en `tests/test_live.py` |
 | **Latencia** | El texto llega palabra por palabra mientras la persona habla. Desde que el orador hace una pausa hasta que llega la última palabra de la frase: **0,34 s en p50 y 0,7 a 0,9 s en p90 para el original, y 0,29 a 0,34 s en p50 y 0,76 a 0,89 s en p90 para la traducción**. En 10 minutos seguidos no hay atraso acumulado (el peor minuto dio 2,1 s de p90). Si igual una sesión se traba o se atrasa más de 6 s, un vigía la corta y la retoma en vivo: mejor perder una frase que ir 10 s atrás | [`docs/evidencia/`](docs/evidencia), medido con [`scripts/drift_test.py`](scripts/drift_test.py) sobre 10 minutos de cada charla de ejemplo |
 | **Escalabilidad** | Un worker por sala sin estado compartido y un hub que sólo mueve texto. Los idiomas sin público no abren sesión y el audio en silencio no se manda. Costo real por sala en el panel | 4 sesiones Live simultáneas contra Gemini con 0 errores. Prueba de carga palabra por palabra: 20 salas y 500 personas, 4.223 entregas por segundo, 4 ms p50 del hub a la pantalla ([Escala](#escala)). US$ 2,2 por idioma y por hora ([Costos](#costos)) |
-| **Despliegue y operación** | `pip install`, una clave en `.env` y `subtitula serve`, o Docker Compose con un contenedor por sala. La sala puede mandar el audio desde un navegador, sin instalar nada. Panel con vúmetro, demoras p50/p90, errores, sesiones, costo, QR y glosario editable en vivo. Overlay para OBS/vMix, `live.txt` para títulos y fondo de croma | Secciones [Operación](#operación-durante-el-evento) y [Qué pasa si…](#qué-pasa-si) |
+| **Despliegue y operación** | `pip install`, una clave en `.env` y `subtitula serve`, o Docker Compose con un contenedor por sala. Agenda por sala: título, orador, idioma y glosario cambian solos a la hora de cada charla. La sala puede mandar el audio desde un navegador, sin instalar nada. Panel con vúmetro, demoras p50/p90, errores, sesiones, costo, QR y glosario editable en vivo. Overlay para OBS/vMix, `live.txt` para títulos y fondo de croma | Secciones [Operación](#operación-durante-el-evento) y [Qué pasa si…](#qué-pasa-si) |
 | **Innovación** | **Escuchar la interpretación** con auriculares desde el celular (la voz que Live Translate ya genera). **"¿Qué me perdí?"**: resumen de los últimos 5 minutos en tu idioma, con Gemma. Idiomas bajo demanda y vigía de atraso. Tres motores: en vivo, por tramos y 100% local con faster-whisper y Gemma | [Demo pública](https://flordelcastillo.github.io/subtitula/), capturas y video |
 | **Accesibilidad** (el objetivo del desafío) | Tipografía Atkinson Hyperlegible, modo de alto contraste (se activa solo si el sistema lo pide), tamaño de letra ajustable, tema claro u oscuro, objetivos táctiles de 44 px, todo operable con teclado, interfaz en español, inglés y portugués según el celular, y la interpretación hablada para quien prefiere escuchar | Revisión contra WCAG 2.2 AA en la vista del público; capturas en `docs/img` |
 
@@ -208,6 +208,23 @@ Fuentes posibles en `source`:
 | `https://www.youtube.com/watch?v=…` | YouTube en vivo o grabado (usa `yt-dlp`) |
 | `browser` | Audio desde la página `/enviar/<sala>` |
 
+**Agenda por sala.** Cada sala puede llevar su lista de charlas con horario; el hub cambia solo el nombre, el orador, el tema, el idioma y el glosario cuando el reloj entra en cada franja, la pantalla de sala muestra "Próxima", y al terminar la última charla la sala vuelve a su configuración base. Nadie tiene que tocar nada entre charla y charla.
+
+```yaml
+  - id: auditorio
+    name: Auditorio
+    source: srt://0.0.0.0:9000?mode=listener
+    language: es
+    talks:
+      - { name: Apertura, start: "09:30", end: "10:00", speaker: Ariel Jolo }
+      - name: "What's new in AI Audio?"
+        start: "12:10"          # hora local; también vale 2026-09-25T12:10
+        end: "12:50"
+        speaker: Thor Schaeff
+        language: en             # las sesiones Live se reabren en inglés
+        glossary: ["ElevenLabs = 11 labs", Gemini Live API]
+```
+
 `config/glossary.yaml` tiene los términos globales. Durante el evento se corrigen desde `/admin`, sala por sala, sin reiniciar nada: el cambio llega al worker en menos de 2 segundos, aunque corra en otra máquina.
 
 Variables de entorno:
@@ -263,7 +280,7 @@ Para más de 20 o 30 salas o miles de personas: varios workers por máquina, el 
 
 **Antes del evento**
 
-1. Cargar las charlas en `config/sessions.yaml` (título, orador, tema, idioma y fuente) y el glosario común en `config/glossary.yaml`.
+1. Cargar las salas en `config/sessions.yaml` con su agenda (`talks`: título, horario, orador, tema, idioma y glosario de cada charla) y el glosario común en `config/glossary.yaml`. Durante el día, el hub aplica cada charla a su hora.
 2. En `/admin`, **Sugerir con IA** en cada sala: Gemini propone nombres propios, productos y siglas a partir del título, el orador y la descripción de la agenda. Se revisan y se guardan.
 3. Imprimir o proyectar el QR de cada sala (link *QR* en el panel o `/pantalla/<sala>`). Apunta a `/s/<sala>`.
 
@@ -290,7 +307,7 @@ pip install -e '.[dev]'
 pytest
 ```
 
-Los tests (30, en CI en cada push) cubren:
+Los tests (34, en CI en cada push) cubren:
 
 - el segmentador con audio sintético y las exportaciones;
 - dos salas en paralelo de punta a punta y el motor en dos etapas;
