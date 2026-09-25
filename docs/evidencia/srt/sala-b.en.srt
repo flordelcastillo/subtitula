@@ -1,183 +1,168 @@
 1
-00:00:01,450 --> 00:00:06,950
-So, I don't know, for me, the programming
-is dead, well, long live programming.
+00:00:02,260 --> 00:00:07,450
+the programming, because so many times we
+want to kill the programming,
 
 2
-00:00:06,950 --> 00:00:11,910
-Because so many times we think we've
-killed programming, in the end, it's
-always
+00:00:07,450 --> 00:00:11,470
+in the end, I don't know how he does it,
+but it survives.
 
 3
-00:00:11,910 --> 00:00:15,150
-I don't know how it does it, but it
-survives.
+00:00:11,470 --> 00:00:15,440
+I'm Miguel Ángel Durán, more than 15 years
+of experience developing software,
 
 4
-00:00:15,150 --> 00:00:19,150
-I'm Miguel Ángel Durán, with over 15 years
-of experience developing
+00:00:15,440 --> 00:00:20,430
+you can find me on all social media that
+lets me be like my that I have a community
 
 5
-00:00:19,150 --> 00:00:23,170
-software, you can find me on all social
-media platforms that allow me, like
+00:00:20,430 --> 00:00:25,710
+of more than 3 million wonderful people
+who I hope are here among them,
 
 6
-00:00:23,170 --> 00:00:28,160
-Midudev, where I have a community of over
-3 million wonderful people who are here
+00:00:25,710 --> 00:00:29,730
+and I thank them infinitely for being part
+of this community.
 
 7
-00:00:28,160 --> 00:00:33,180
-among them and I thank them infinitely for
-being part of this community.
-
-8
-00:00:33,180 --> 00:00:35,190
+00:00:29,730 --> 00:00:30,700
 Thank you, thank you, thank you.
 
-9
-00:00:35,190 --> 00:00:36,150
+8
+00:00:30,700 --> 00:00:33,440
 Thank you from the bottom of my heart,
-really.
+really, I appreciate it so much.
+
+9
+00:00:33,440 --> 00:00:38,430
+I have to warn you, especially that guy
+who's looking for now my Instagram
 
 10
-00:00:36,150 --> 00:00:37,900
-I appreciate it a lot.
+00:00:38,430 --> 00:00:40,670
+and saying, let's see, let's see if she's
+in a bikini.
 
 11
-00:00:37,900 --> 00:00:42,160
-I have to warn, especially that guy who's
-looking for me on Instagram right now
+00:00:40,670 --> 00:00:44,440
+Well, I have some bad news, a good one and
+a bad one.
 
 12
-00:00:42,160 --> 00:00:44,930
-saying, let's see, let's see if they come
-out in bikinis.
+00:00:44,440 --> 00:00:48,430
+If you look for my dudef, I do appear in a
+bikini, but it's this one.
 
 13
-00:00:44,930 --> 00:00:48,170
-Well, I have some good news and some bad
-news.
+00:00:48,430 --> 00:00:52,430
+Okay? It's my Indian cousin who is a model
+for swimwear.
 
 14
-00:00:48,170 --> 00:00:51,200
-If you search for midudev, I do come out
-in a bikini, but it's this one.
+00:00:52,430 --> 00:00:56,710
+And he yes, if you look for my dudef
+you'll find him there, this is not me,
 
 15
-00:00:51,200 --> 00:00:57,160
-Okay? It's my cousin Indio, who is a
-model, of swimwear, and he
+00:00:56,710 --> 00:01:00,450
+okay? No, how much this guy has changed,
+since he started running, oh
 
 16
-00:00:57,160 --> 00:01:00,160
-yes, if you search for midudev, you'll
-find him there, this isn't me,
+00:01:00,450 --> 00:01:02,700
+my god, no, no, it's not me.
 
 17
-00:01:00,160 --> 00:01:02,900
-okay? Or how much this guy has changed,
-huh?
+00:01:02,700 --> 00:01:07,450
+On Instagram I'm Midu, this one is me, I'm
+saying it so you're happy,
 
 18
-00:01:02,900 --> 00:01:05,910
-Since he started running, oh my god, no,
-it's not me.
+00:01:07,450 --> 00:01:10,950
+when you go to Midu and you don't get any
+surprises.
 
 19
-00:01:05,910 --> 00:01:08,420
-On Instagram I'm Midu.
+00:01:10,950 --> 00:01:15,940
+I'm also famous because now I have a fight
+with the football league in Spain,
 
 20
-00:01:08,420 --> 00:01:09,430
-this one, this one is me.
+00:01:15,940 --> 00:01:19,940
+I've been in the newspaper because I found
+out that the league is blocking
 
 21
-00:01:09,430 --> 00:01:14,400
-I'm saying this so you're happy when you
-go to midudev and don't get any surprises.
+00:01:19,940 --> 00:01:23,930
+us now when there's football, so it blocks
+a lot of websites to try to fight piracy.
 
 22
-00:01:14,400 --> 00:01:18,420
-I'm also famous because now I have a fight
-with the football league in Spain
+00:01:23,930 --> 00:01:27,960
+And this is my arch-nemesis, who is the
+president of the League,
 
 23
-00:01:18,420 --> 00:01:23,410
-I've been in the newspaper because I found
-that the league blocks us now
-
-24
-00:01:23,410 --> 00:01:27,410
-when there's football, so we block a lot
-of websites to try to combat piracy.
-
-25
-00:01:27,410 --> 00:01:31,170
-And this is my archenemy, who is the
-president of the league,
-
-26
-00:01:31,170 --> 00:01:32,920
+00:01:27,960 --> 00:01:29,940
 his name is Javier Tebas, okay?
 
+24
+00:01:29,940 --> 00:01:32,710
+And Javier Tebas says that if they're
+websites of four geeks,
+
+25
+00:01:32,710 --> 00:01:34,720
+the funny one, right?
+
+26
+00:01:34,720 --> 00:01:38,690
+Well, what can we do, also in Chile,
+nearby, I'm in the newspapers for things
+like
+
 27
-00:01:32,920 --> 00:01:37,150
-And Javier Tebas says that they are
-websites of 4 geeks, the funny one, right?
+00:01:38,690 --> 00:01:42,710
+this, they cut your salary, Spanish
+influencer, I destroy a Chilean job offer
 
 28
-00:01:37,150 --> 00:01:38,170
-Well, what can we do?
+00:01:42,710 --> 00:01:44,440
+for a fake part-time schedule.
 
 29
-00:01:38,170 --> 00:01:42,170
-Also in Chile, here nearby, I'm in the
-newspapers for things like this,
+00:01:44,440 --> 00:01:51,700
+And this photo that This is real, this
+photo, I don't know, I mean, it looks
 
 30
-00:01:42,170 --> 00:01:46,160
-they split your salary a Spanish
-influencer destroys a job offer in Chile
-for
+00:01:51,700 --> 00:01:55,700
+like I'm doing that I'm at the doctor's,
+well, anyway, I'm not going to explain
 
 31
-00:01:46,160 --> 00:01:47,210
-false part-time hours.
+00:01:55,700 --> 00:01:56,690
+what it looks like I'm doing.
 
 32
-00:01:47,210 --> 00:01:48,910
-And this photo, huh?
-
-33
-00:01:48,910 --> 00:01:55,150
-That This is real, this photo, I don't
-know, I mean, it looks like
-
-34
-00:01:55,150 --> 00:01:58,180
-I'm doing something like I'm at the
-doctor's, well, anyway, I'm not
-
-35
-00:01:58,180 --> 00:02:00,160
-going to explain this, it looks like I'm
-doing.
-
-36
-00:02:00,160 --> 00:02:02,150
-I prefer to think it's a little more like
+00:01:56,690 --> 00:01:58,700
+I prefer to think it's a bit more like
 this.
 
-37
-00:02:02,150 --> 00:02:06,150
-Okay? To destroy the job offers that are
+33
+00:01:58,700 --> 00:02:02,700
+Okay? to destroy the job offers that are
 bad.
 
-38
-00:02:06,150 --> 00:02:09,990
-Well, this is me, this is me, but I'm here
-to talk to you about a lot of things,
+34
+00:02:02,700 --> 00:02:03,720
+Well, this is me.
+
+35
+00:02:03,720 --> 00:02:06,590
+This is me, but I'm here to talk to you
+about a lot of things,

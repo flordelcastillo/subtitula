@@ -1,181 +1,165 @@
 1
-00:00:01,260 --> 00:00:06,770
-Então, não sei, para mim, a programação é
-morto, pois, longa vida à programação.
+00:00:02,050 --> 00:00:07,260
+la programación, porque tantas veces que
+queremos matar la programación, al final
 
 2
-00:00:06,770 --> 00:00:12,800
-Porque tantas vezes que cremos matar a
-programação, ao final sempre não sei como
-lo
+00:00:07,260 --> 00:00:11,260
+siempre no sé cómo lo hace, pero
+sobrevive.
 
 3
-00:00:12,800 --> 00:00:14,840
-hace, pero sobrevive.
-
-4
-00:00:14,840 --> 00:00:17,870
+00:00:11,260 --> 00:00:14,370
 Soy Miguel Ángel Durán, más de 15 años de
 experiencia desarrollando
 
-5
-00:00:17,870 --> 00:00:21,840
+4
+00:00:14,370 --> 00:00:19,280
 software, me podéis encontrar en todas las
-redes sociales que me dejan estar,
+redes sociales que me dejan estar como mi
+
+5
+00:00:19,280 --> 00:00:23,380
+que tengo una comunidad de más de 3
+millones de maravillosas personas
 
 6
-00:00:21,840 --> 00:00:25,890
-como midudev, que tengo una comunidad de
-más de 3 millones de
+00:00:23,380 --> 00:00:27,330
+que espero que estén aquí entre ellos, que
+les doy las gracias infinitas por
 
 7
-00:00:25,890 --> 00:00:29,810
-maravillosas personas que están aquí entre
-ellos y les doy las gracias
+00:00:27,330 --> 00:00:29,390
+ser parte de esta comunidad.
 
 8
-00:00:29,810 --> 00:00:32,940
-infinitas por ser parte de esta comunidad.
-
-9
-00:00:32,940 --> 00:00:33,830
+00:00:29,390 --> 00:00:30,380
 Muchas, muchas, muchas gracias.
 
+9
+00:00:30,380 --> 00:00:33,280
+Gracias de corazón, de verdad, os lo
+agradezco un montón.
+
 10
-00:00:33,830 --> 00:00:35,870
-Gracias de corazón, de verdad.
+00:00:33,280 --> 00:00:38,270
+Tengo que avisar, sobre todo el chico ese
+que está buscando ahora mi Instagram y
 
 11
-00:00:35,870 --> 00:00:36,810
-Os lo agradezco un montón.
+00:00:38,270 --> 00:00:40,390
+diciendo, a ver, a ver si sale en bikini.
 
 12
-00:00:36,810 --> 00:00:41,800
-Tengo que avisar, sobre todo el chico ese
-que está buscando ahora en Instagram
-
-13
-00:00:41,800 --> 00:00:43,860
-diciendo, a ver, a ver si salen bikini.
-
-14
-00:00:43,860 --> 00:00:46,920
+00:00:40,390 --> 00:00:44,330
 Pues tengo una mala una buena y una mala
 noticia.
 
+13
+00:00:44,330 --> 00:00:47,340
+Si buscas mi dudef, sí que salgo en
+bikini, pero es este.
+
+14
+00:00:47,340 --> 00:00:54,360
+Vale? Es mi primo indio que es modelo de
+bañadores y sí, si buscáis mi
+
 15
-00:00:46,920 --> 00:00:50,940
-Si buscas midudev, sí que salgo en bikini,
-pero es este.
+00:00:54,360 --> 00:00:57,310
+dudef lo vais a encontrar ahí, este no soy
+yo, vale?
 
 16
-00:00:50,940 --> 00:00:57,860
-Vale? Es mi primo Indio, que es modelo, de
-bañadores, y se y sí, si buscáis midudev,
+00:00:57,310 --> 00:01:01,360
+No, qué cambiado está este chico, desde
+que corre, madre mía, no, no, pues es que
 
 17
-00:00:57,860 --> 00:01:00,810
-lo vais a encontrar ahí, este no soy yo,
-vale?
+00:01:01,360 --> 00:01:06,330
+no soy yo. En Instagram soy Midu, este
+este sí que soy yo, lo digo para que
+estéis
 
 18
-00:01:00,810 --> 00:01:01,860
-O qué cambiado este chico, eh?
+00:01:06,330 --> 00:01:10,660
+estéis contentos, cuando entréis en Midu y
+no os lleve ninguna sorpresa.
 
 19
-00:01:01,860 --> 00:01:05,830
-Desde que corre, madre mía, no, pues es
-que no soy yo.
-
-20
-00:01:05,830 --> 00:01:07,190
-En Instagram soy Midu.
-
-21
-00:01:07,190 --> 00:01:09,230
-este, este sí que soy yo.
-
-22
-00:01:09,230 --> 00:01:13,140
-Lo digo para que estéis contentos cuando
-entréis en midudev y no os llevéis
-
-23
-00:01:13,140 --> 00:01:14,140
-ninguna sorpresa.
-
-24
-00:01:14,140 --> 00:01:19,100
+00:01:10,660 --> 00:01:15,600
 También soy famoso porque ahora tengo una
 pelea con la Liga de fútbol en España,
 
-25
-00:01:19,100 --> 00:01:23,120
+20
+00:01:15,600 --> 00:01:19,620
 he salido en el periódico porque encontré
-que la liga nos bloquea ahora
+que la Liga nos bloquea
 
-26
-00:01:23,120 --> 00:01:26,280
-cuando hay fútbol, pues bloqueamos un
+21
+00:01:19,620 --> 00:01:22,630
+ahora cuando hay fútbol, pues bloquea un
 montón de páginas web para intentar
 
+22
+00:01:22,630 --> 00:01:24,610
+batallar la piratería.
+
+23
+00:01:24,610 --> 00:01:28,660
+Y este es mi archienemigo, que es el
+presidente de la Liga, se llama Javier
+Tebas,
+
+24
+00:01:28,660 --> 00:01:32,470
+vale? Y Javier Tebas dice que pues si son
+páginas de cuatro frikis, el
+
+25
+00:01:32,470 --> 00:01:33,410
+de gracioso, ¿ no?
+
+26
+00:01:33,410 --> 00:01:37,360
+Bueno, qué le vamos a hacer, también en
+Chile, aquí cerca, salgo en los periódicos
+
 27
-00:01:26,280 --> 00:01:30,200
-batallar la piratería y este es mi
-archienemigo, que es el presidente de
+00:01:37,360 --> 00:01:41,380
+por cosas como esta, te parten el sueldo
+influencer español, destruyo oferta
 
 28
-00:01:30,200 --> 00:01:31,870
-la liga, se llama Javier Tebas, vale?
+00:01:41,380 --> 00:01:43,340
+laboral chilena por falso horario part
+time.
 
 29
-00:01:31,870 --> 00:01:36,840
-Y Javier Tebas dice que son páginas de 4
-frikis, el de gracia, ¿ no?
+00:01:43,340 --> 00:01:52,350
+Y esta foto que Esta es real, esta foto,
+yo no sé, o sea, parece que estoy haciendo
 
 30
-00:01:36,840 --> 00:01:37,880
-Bueno, que le vamos a hacer.
+00:01:52,350 --> 00:01:55,410
+que estoy en el médico, bueno, en fin, no
+voy a explicar lo que parece que estoy
 
 31
-00:01:37,880 --> 00:01:41,880
-También en Chile, aquí cerca, salgo en los
-periódicos por cosas como esta,
+00:01:55,410 --> 00:01:58,360
+haciendo. Yo prefiero pensar que es un
+poco más así.
 
 32
-00:01:41,880 --> 00:01:45,820
-te parten el sueldo un influencer español
-destruye oferta laboral chilena por falso
-
-33
-00:01:45,820 --> 00:01:46,840
-horario part time.
-
-34
-00:01:46,840 --> 00:01:48,770
-Y esta foto, eh?
-
-35
-00:01:48,770 --> 00:01:55,800
-Que Esta es real, esta foto, yo no sé, o
-sea, parece que estoy haciendo que
-
-36
-00:01:55,800 --> 00:01:59,900
-estoy en el médico, bueno, en fin, no voy
-a explicar esto, parece que esté haciendo.
-
-37
-00:01:59,900 --> 00:02:01,840
-Yo prefiero pensar que es un poco más así.
-
-38
-00:02:01,840 --> 00:02:05,890
-Vale? Para destruir las ofertas de trabajo
+00:01:58,360 --> 00:02:02,330
+Vale? para destruir las ofertas de trabajo
 que están mal.
 
-39
-00:02:05,890 --> 00:02:09,910
-Bueno, este soy yo, este soy yo, pero
-vengo a hablaros de un montón de cosas,
-como
+33
+00:02:02,330 --> 00:02:05,360
+Bueno, este este soy yo, este soy yo, pero
+vengo a hablaros
+
+34
+00:02:05,360 --> 00:02:06,380
+de un montón de cosas, como

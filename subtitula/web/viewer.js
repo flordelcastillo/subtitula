@@ -12,6 +12,9 @@
 
   const theme = store.get("theme", "dark");
   document.documentElement.dataset.theme = theme;
+  // Alto contraste: se guarda la preferencia y, si el sistema lo pide, se activa solo.
+  const highContrast = store.get("contrast", matchMedia("(prefers-contrast: more)").matches ? "high" : "") === "high";
+  if (highContrast) document.documentElement.dataset.contrast = "high";
 
   async function api(path) {
     const r = await fetch(path);
@@ -84,6 +87,7 @@
       // En el motor en vivo cada idioma corta sus propias líneas: no hay un original línea a línea.
       $("#dual").hidden = lang === "original" || tracked;
       $("#theme").textContent = document.documentElement.dataset.theme === "light" ? t("theme.dark") : t("theme.light");
+      $("#contrast").setAttribute("aria-pressed", String(document.documentElement.dataset.contrast === "high"));
       const canListen = speechLangs.includes(lang);
       $("#listen").hidden = !canListen;
       $("#listen").setAttribute("aria-pressed", String(player.on));
@@ -173,6 +177,11 @@
         document.documentElement.dataset.theme = next;
         store.set("theme", next);
         syncButtons();
+      } else if (b.id === "contrast") {
+        const on = document.documentElement.dataset.contrast !== "high";
+        if (on) document.documentElement.dataset.contrast = "high"; else delete document.documentElement.dataset.contrast;
+        store.set("contrast", on ? "high" : "normal");
+        b.setAttribute("aria-pressed", String(on));
       }
     });
 

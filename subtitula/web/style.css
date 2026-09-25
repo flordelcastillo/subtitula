@@ -27,6 +27,20 @@
   --bad: #b3261e;
   color-scheme: light;
 }
+/* Alto contraste: blanco puro sobre negro, líneas más marcadas y sin atenuar las líneas viejas. */
+:root[data-contrast="high"] {
+  --bg: #000000;
+  --fg: #ffffff;
+  --surface: #111111;
+  --line: #8a8a8a;
+  --muted: #d6d6d6;
+  --stage: #ffd166;
+  --ok: #7cff9e;
+  --bad: #ff8f8f;
+  color-scheme: dark;
+}
+:root[data-contrast="high"] .cap { opacity: .85; }
+:root[data-contrast="high"] .cap.last { opacity: 1; }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 body {

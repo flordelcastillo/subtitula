@@ -33,11 +33,12 @@ Subtitula is an open source live captioning and simultaneous interpretation syst
 
 | Criterio | Qué hace Subtitula | Evidencia |
 |---|---|---|
-| **Calidad** | Interpretación con Live Translate. El glosario de cada sala entra como vocabulario del reconocedor y, además, corrige la ortografía de nombres y términos en todas las pistas, incluida la traducción. Cada idioma arma sus propias líneas, cortadas por oración y con 84 caracteres como máximo (dos renglones de 42, la norma de subtitulado). Las preguntas del público en el idioma de destino se muestran tal cual | Ejemplo real: "if I pipe the audio out on the HDMI, are you able to hear it on the stream?" → "Si saco el audio por el HDMI, ¿puedes escucharlo en la transmisión?". Tests de glosario y de pistas en `tests/test_live.py` |
+| **Calidad** | Interpretación con Live Translate. El glosario de cada sala entra como vocabulario del reconocedor y, además, corrige la ortografía de nombres y términos en todas las pistas, incluida la traducción. Cada idioma arma sus propias líneas, cortadas por oración y con 84 caracteres como máximo (dos renglones de 42, la norma de subtitulado). Las preguntas del público en el idioma de destino se muestran tal cual | SRT completos del original y de cada traducción, de 2 minutos por charla, en [`docs/evidencia/srt`](docs/evidencia/srt). Ejemplo real: "if I pipe the audio out on the HDMI, are you able to hear it on the stream?" → "Si saco el audio por el HDMI, ¿puedes escucharlo en la transmisión?". Tests de glosario y de pistas en `tests/test_live.py` |
 | **Latencia** | El texto llega palabra por palabra mientras la persona habla. Desde que el orador hace una pausa hasta que llega la última palabra de la frase: **0,34 s en p50 y 0,7 a 0,9 s en p90 para el original, y 0,29 a 0,34 s en p50 y 0,76 a 0,89 s en p90 para la traducción**. En 10 minutos seguidos no hay atraso acumulado (el peor minuto dio 2,1 s de p90). Si igual una sesión se traba o se atrasa más de 6 s, un vigía la corta y la retoma en vivo: mejor perder una frase que ir 10 s atrás | [`docs/evidencia/`](docs/evidencia), medido con [`scripts/drift_test.py`](scripts/drift_test.py) sobre 10 minutos de cada charla de ejemplo |
-| **Escalabilidad** | Un worker por sala sin estado compartido y un hub que sólo mueve texto. Los idiomas sin público no abren sesión y el audio en silencio no se manda. Costo real por sala en el panel | 4 sesiones Live simultáneas contra Gemini con 0 errores. Prueba de carga palabra por palabra: 20 salas y 500 personas, 4.179 entregas por segundo, 7 ms p50 del hub a la pantalla ([Escala](#escala)). US$ 2,2 por idioma y por hora ([Costos](#costos)) |
+| **Escalabilidad** | Un worker por sala sin estado compartido y un hub que sólo mueve texto. Los idiomas sin público no abren sesión y el audio en silencio no se manda. Costo real por sala en el panel | 4 sesiones Live simultáneas contra Gemini con 0 errores. Prueba de carga palabra por palabra: 20 salas y 500 personas, 4.223 entregas por segundo, 4 ms p50 del hub a la pantalla ([Escala](#escala)). US$ 2,2 por idioma y por hora ([Costos](#costos)) |
 | **Despliegue y operación** | `pip install`, una clave en `.env` y `subtitula serve`, o Docker Compose con un contenedor por sala. La sala puede mandar el audio desde un navegador, sin instalar nada. Panel con vúmetro, demoras p50/p90, errores, sesiones, costo, QR y glosario editable en vivo. Overlay para OBS/vMix, `live.txt` para títulos y fondo de croma | Secciones [Operación](#operación-durante-el-evento) y [Qué pasa si…](#qué-pasa-si) |
-| **Innovación** | **Escuchar la interpretación** con auriculares desde el celular (la voz que Live Translate ya genera). **"¿Qué me perdí?"**: resumen de los últimos 5 minutos en tu idioma, con Gemma. Idiomas bajo demanda. Tres motores: en vivo, por tramos y 100% local con faster-whisper y Gemma | Capturas y video demo |
+| **Innovación** | **Escuchar la interpretación** con auriculares desde el celular (la voz que Live Translate ya genera). **"¿Qué me perdí?"**: resumen de los últimos 5 minutos en tu idioma, con Gemma. Idiomas bajo demanda y vigía de atraso. Tres motores: en vivo, por tramos y 100% local con faster-whisper y Gemma | [Demo pública](https://flordelcastillo.github.io/subtitula/), capturas y video |
+| **Accesibilidad** (el objetivo del desafío) | Tipografía Atkinson Hyperlegible, modo de alto contraste (se activa solo si el sistema lo pide), tamaño de letra ajustable, tema claro u oscuro, objetivos táctiles de 44 px, todo operable con teclado, interfaz en español, inglés y portugués según el celular, y la interpretación hablada para quien prefiere escuchar | Revisión contra WCAG 2.2 AA en la vista del público; capturas en `docs/img` |
 
 ## Qué resuelve
 
@@ -52,7 +53,7 @@ Subtitula is an open source live captioning and simultaneous interpretation syst
 
 ## Probarlo en 2 minutos
 
-Requisitos: Python 3.11 o superior, `ffmpeg` y una clave de Gemini de [Google AI Studio](https://aistudio.google.com/apikey).
+Requisitos: Python 3.11 o superior, `ffmpeg` y una clave de Gemini de [Google AI Studio](https://aistudio.google.com/apikey). Para el motor en vivo conviene un proyecto con facturación activa (Tier 1); más abajo se explica por qué.
 
 ```bash
 git clone https://github.com/flordelcastillo/subtitula && cd subtitula
@@ -62,20 +63,22 @@ echo GEMINI_API_KEY=tu-clave > .env
 subtitula serve
 ```
 
-El motor por defecto (`gemini-live`) mantiene una sesión abierta por sala e idioma y no hace un pedido por frase, así que no choca con el límite de pedidos por minuto. Live Translate no tiene plan gratuito: hace falta un proyecto con facturación activa en AI Studio. Las pruebas de este README se hicieron así, con 4 sesiones simultáneas y 0 errores. Según la [guía de Google para traducir transmisiones con Live Translate](https://github.com/google-gemini/gemini-live-translate-livekit), el nivel inicial admite pocas conexiones simultáneas y un evento con varias salas e idiomas necesita subir de tier; con idiomas bajo demanda se abren sólo las sesiones que alguien usa. Sin clave se puede probar todo con `--engine fake`, y con la clave gratuita anda el motor por tramos (`--engine gemini`). El costo de cada sala se ve en `/admin` (ver [Costos](#costos)).
+El motor por defecto (`gemini-live`) mantiene una sesión abierta por sala e idioma y no hace un pedido por frase, así que no choca con el límite de pedidos por minuto. Según la [página de precios](https://ai.google.dev/gemini-api/docs/pricing), Live Translate tiene un nivel gratuito, pero con nuestra clave gratuita la sesión no llegó a abrir; la guía de Google que se cita abajo dice que ese nivel admite unas 3 a 5 conexiones simultáneas. Las pruebas de este README se hicieron con un proyecto con facturación activa (Tier 1): 4 sesiones simultáneas y 0 errores. Según la [guía de Google para traducir transmisiones con Live Translate](https://github.com/google-gemini/gemini-live-translate-livekit), el nivel inicial admite pocas conexiones simultáneas y un evento con varias salas e idiomas necesita subir de tier; con idiomas bajo demanda se abren sólo las sesiones que alguien usa. Sin clave se puede probar todo con `--engine fake`, y con la clave gratuita anda el motor por tramos (`--engine gemini`). El costo de cada sala se ve en `/admin` (ver [Costos](#costos)).
 
 Abrí <http://localhost:8000>. La sala **"Tu audio"** recibe lo que mandes desde <http://localhost:8000/enviar/sala-c>: elegí "Archivo de audio o video…", subí cualquier charla y mirala subtitulada en otra pestaña. Detecta el idioma sola y abre la sesión Live recién cuando llega audio. Además hay dos salas de ejemplo en loop, con fragmentos reales de Nerdearla 2025: una charla en inglés ([Thor Schaeff, *Building Multilingual Conversational AI Agents*](https://www.youtube.com/watch?v=GkVjMxYi5gA)) y otra en español ([Miguel Ángel Durán, *Programming is dead. Long live programming!*](https://www.youtube.com/watch?v=zynI57qVj-U)).
 
 | Página | Para quién |
 |---|---|
-| `/` y `/s/<sala>?lang=es` | Público: elige sala e idioma, lee los subtítulos, **escucha la interpretación** con auriculares, pide **"¿Qué me perdí?"**, cambia el tamaño de letra y el tema, y descarga la charla |
+| `/` y `/s/<sala>?lang=es` | Público: elige sala e idioma, lee los subtítulos, **escucha la interpretación** con auriculares (motor en vivo, modo `serve`), pide **"¿Qué me perdí?"**, cambia el tamaño de letra y el tema, y descarga la charla. La interfaz sigue el idioma del celular: español, inglés o portugués |
 | `/overlay/<sala>?lang=es` | Fuente de navegador en OBS o vMix (fondo transparente, o `&bg=00b140` para croma) |
 | `/pantalla/<sala>?lang=es&lang2=en` | Tele o proyector al costado del escenario: subtítulos grandes en uno o dos idiomas y el QR para seguirlos en el celular |
 | `/api/sessions/<sala>/live.txt?lang=es` | Las últimas dos líneas en texto plano, como fuente de datos de un título de vMix o CasparCG |
 | `/admin` | Producción: estado, audio, latencia, errores, público, costo, QR y glosario por sala |
-| `/enviar/<sala>` | La compu de la sala manda el audio desde el navegador: micrófono, placa de la consola o **un archivo de audio o video** para probar sin sala |
+| `/enviar/<sala>` | La compu de la sala manda el audio desde el navegador: micrófono, placa de la consola o **un archivo de audio o video** para probar sin sala. Sólo en modo `subtitula serve` (un proceso): con Docker Compose las salas entran por stream. El micrófono del navegador exige HTTPS o `localhost` (ver [Puesta en producción](#puesta-en-producción)) |
 
 Sin clave de Gemini se puede ver todo funcionando con el motor de prueba: `subtitula serve --engine fake`.
+
+Ojo con el costo del quickstart: `subtitula serve` con las salas de ejemplo abre 4 sesiones Live al arrancar (dos salas con dos idiomas cada una) y a los 2 minutos deja 2 abiertas. Son unos US$ 8,8 por hora al principio y US$ 4,4 por hora después, mientras lo dejes corriendo.
 
 ### Subtitular un archivo desde la terminal
 
@@ -106,6 +109,8 @@ Cuánto sale un evento:
 
 El límite de sesiones simultáneas depende del tier del proyecto en AI Studio. La [guía oficial de Live Translate](https://github.com/google-gemini/gemini-live-translate-livekit) advierte que el nivel inicial admite pocas conexiones. Con idiomas bajo demanda, sólo cuentan las sesiones que alguien está usando.
 
+Para comparar: los planes de Maestra, la herramienta comercial de subtitulado en vivo más citada, arrancan en US$ 29 por 5 horas (unos US$ 5,8 por hora de subtitulado) y la traducción en vivo se cobra aparte, según [Sonix](https://sonix.ai/resources/maestra-pricing/) (2026). Subtitula da el original y la traducción juntos por US$ 2,21 la hora, o menos de US$ 0,70 con el motor por tramos.
+
 Tres cosas bajan la cuenta del motor en vivo sin tocar la calidad:
 
 - **Idiomas bajo demanda.** Cada sala mantiene abierta sólo la sesión de su idioma principal. Las demás (por ejemplo, portugués) se abren cuando alguien las lee o las escucha y se cierran a los 2 minutos sin público. En una conferencia de 30 charlas con tres idiomas, la mayoría de esas sesiones no se abre nunca.
@@ -118,6 +123,7 @@ Tres cosas bajan la cuenta del motor en vivo sin tocar la calidad:
 |---|---|
 | Se corta la fuente de audio | El worker reintenta con espera exponencial y la fila de la sala se pone roja en `/admin` |
 | La traducción se atrasa o deja de avanzar mientras el original sigue | Un vigía revisa cada sesión cada medio segundo. Si la traducción lleva 10 s sin avanzar mientras el original ya sumó dos líneas, si hay voz y no llega el original, o si una frase llegó más de 6 s tarde, corta esa sesión y la reabre en vivo, sin arrastrar el atraso. En el panel queda contado como "corte por atraso" |
+| La sesión Live abre pero no devuelve nada | Pasó en 2 de 4 arranques durante las pruebas: la sesión conecta, recibe audio y no transcribe. Si hay voz de entrada y a los 6 s no llegó nada, el vigía la reabre; lo mismo para una sesión de traducción que no traduce mientras el original avanza |
 | Gemini devuelve un error o la sesión Live se cae | La sesión se reabre retomando el contexto (session resumption); si el retome falló, abre una nueva. El panel cuenta las reconexiones |
 | La charla dura horas | La sesión usa compresión de contexto con ventana deslizante y retoma cuando el servidor pide reconectar |
 | Se acaba la cuota o un modelo está saturado | El motor por tramos pasa al modelo siguiente del pool ante un 429 o un 503. Sin nube, está el motor local |
@@ -240,13 +246,20 @@ Prueba de carga incluida, que no gasta API:
 python scripts/loadtest.py --mode live --stages 20 --viewers 25 --seconds 45
 ```
 
-El modo `live` imita al motor en vivo: tres pistas por sala (original y dos traducciones) cuyas líneas crecen de a un grupo de palabras cada 0,35 s, que es el tráfico más exigente. Resultado en una notebook de 8 núcleos, todo en un solo proceso: **20 salas y 500 personas conectadas, 168 actualizaciones por segundo y 188.050 entregas (4.179 por segundo) sin errores; del hub a la pantalla, 7 ms en p50 y 112 ms en p99**, con el 65% de un núcleo contando a los 500 clientes de prueba. Con `--mode chunks` (un subtítulo completo cada ~3 s, como el motor por tramos) dio 6 ms en p50 y 18 ms en p99.
+El modo `live` imita al motor en vivo: tres pistas por sala (original y dos traducciones) cuyas líneas crecen de a un grupo de palabras cada 0,35 s, que es el tráfico más exigente. Resultado en una notebook de 8 núcleos, todo en un solo proceso: **20 salas y 500 personas conectadas, 169 actualizaciones por segundo y 190.050 entregas (4.223 por segundo) sin errores; del hub a la pantalla, 4 ms en p50 y 41 ms en p99**, con el 45% de un núcleo contando a los 500 clientes de prueba. La salida completa está en [`docs/evidencia/carga-20-salas-500-personas.txt`](docs/evidencia/carga-20-salas-500-personas.txt). Con `--mode chunks` (un subtítulo completo cada ~3 s, como el motor por tramos) dio 6 ms en p50 y 18 ms en p99.
 
 Cuánto cuesta: Live Translate cuenta el audio a 25 tokens por segundo, de entrada y de salida (US$ 2,21 por sesión y por hora; ver [Costos](#costos)). El panel muestra el costo real de cada sala a partir de los tokens que informa la API y los precios oficiales de cada modelo. En las pruebas de 10 minutos se midieron US$ 0,37 por sesión, que coincide con el precio publicado.
 
 Para más de 20 o 30 salas o miles de personas: varios workers por máquina, el hub detrás de un proxy con `proxy_buffering off` para SSE, y un CDN delante de las páginas estáticas.
 
 ## Operación durante el evento
+
+### Puesta en producción
+
+- **Un evento chico (hasta 5 o 6 salas):** una sola máquina con `subtitula serve`. Todo funciona en ese modo, incluidos el audio desde el navegador de la sala (`/enviar`) y la interpretación hablada ("Escuchar").
+- **Muchas salas o varias máquinas:** `subtitula hub` en una y `subtitula worker --session <sala>` por sala, o Docker Compose con un contenedor por sala. En este modo las salas entran por stream (HLS, RTMP, SRT o YouTube); el audio desde el navegador y "Escuchar" necesitan que el worker corra en el mismo proceso que el hub.
+- **HTTPS:** el navegador sólo abre el micrófono en `localhost` o por HTTPS. Para que la compu de la sala use `/enviar` desde otra máquina, poné el hub detrás de un proxy con certificado (por ejemplo [Caddy](https://caddyserver.com): `subtitulos.evento.org { reverse_proxy localhost:8000 }` alcanza, con `flush_interval -1` para que el SSE no se encole). Subir un archivo funciona igual sin HTTPS.
+- **Token:** `SUBTITULA_TOKEN` protege la ingesta de workers remotos, el envío de audio y la edición del glosario. Con Docker Compose es obligatorio.
 
 **Antes del evento**
 
@@ -277,7 +290,7 @@ pip install -e '.[dev]'
 pytest
 ```
 
-Los tests (29, en CI en cada push) cubren:
+Los tests (30, en CI en cada push) cubren:
 
 - el segmentador con audio sintético y las exportaciones;
 - dos salas en paralelo de punta a punta y el motor en dos etapas;

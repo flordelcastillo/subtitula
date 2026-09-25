@@ -309,6 +309,7 @@ class LiveSessionWorker(SessionWorker):
         self.demand_until: dict[str, float] = {}
         # Vigía: nunca quedar atrasado. Mejor cortar y retomar en vivo que acumular segundos de atraso.
         self.stall_s = float(os.environ.get("SUBTITULA_STALL_S", "10"))
+        self.startup_s = float(os.environ.get("SUBTITULA_STARTUP_S", "6"))
         self.stall_chars = int(os.environ.get("SUBTITULA_STALL_CHARS", "150"))  # ~2 líneas de original sin traducir
         self.original_chars = 0
         self.max_lag_ms = int(float(os.environ.get("SUBTITULA_MAX_LAG_S", "6")) * 1000)
@@ -459,14 +460,25 @@ class LiveSessionWorker(SessionWorker):
     def _watchdog(self, now: float) -> None:
         """Corta y reabre una sesión trabada o atrasada, para que los subtítulos vuelvan a estar en vivo."""
         voice = sum(1 for t in self.voice if t > now - self.stall_s) / (self.stall_s * 10)
+        voice_start = sum(1 for t in self.voice if t > now - self.startup_s) / (self.startup_s * 10)
         original_flowing = self.original.last_at and now - self.original.last_at < 3
         for track in self.tracks:
-            if (not track.connected or track.refresh or now - track.connected_at < self.stall_s + 2
-                    or now - track.last_cut_at < 20):
+            if not track.connected or track.refresh or now - track.last_cut_at < 20:
                 continue
+            age = now - track.connected_at
             reason = ""
             builder = self.builders[track.target]
-            if track.primary and voice > 0.5 and now - max(track.last_in_at, track.connected_at) > self.stall_s:
+            # Una sesión que abre y no devuelve nada: pasó en 2 de 4 arranques en las pruebas. Con voz de
+            # entrada, la primera frase llega a los ~3 s; a los 6 s sin nada, se reabre.
+            if age > self.startup_s and track.primary and track.last_in_at < track.connected_at and voice_start > 0.5:
+                reason = f"abrió hace {age:.0f} s y no devolvió nada con voz de entrada"
+            elif age > self.startup_s and not track.primary and track.last_out_at < track.connected_at and original_flowing:
+                reason = f"abrió hace {age:.0f} s y no tradujo nada mientras el original avanza"
+            if age < self.stall_s + 2 and not reason:
+                continue
+            if reason:
+                pass
+            elif track.primary and voice > 0.5 and now - max(track.last_in_at, track.connected_at) > self.stall_s:
                 reason = f"hay voz y no llega el original hace {self.stall_s:.0f} s"
             elif (original_flowing and now - max(track.last_out_at, track.connected_at) > self.stall_s
                   and self.original_chars - track.chars_at_out > self.stall_chars):

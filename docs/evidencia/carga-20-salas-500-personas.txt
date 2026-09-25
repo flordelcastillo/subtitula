@@ -1,0 +1,5 @@
+Modo live: 20 salas, 500 personas conectadas, 45 s
+Actualizaciones publicadas: 7622 (169/s)   entregas SSE: 190050 (4223/s)
+Errores: 0   tramos salteados: 0
+Entrega hub → pantalla: p50 4 ms, p99 41 ms
+CPU (hub + clientes): 45% de un núcleo   memoria máx.: 454 MB

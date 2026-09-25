@@ -206,6 +206,27 @@ async def test_watchdog_leaves_silent_rooms_alone_and_catches_a_stalled_original
     assert es.fresh and "no llega el original" in worker.last_error
 
 
+async def test_watchdog_reopens_a_session_that_opens_but_returns_nothing():
+    """Pasó en 2 de 4 arranques: la sesión abre y no devuelve nada. A los 6 s con voz, se reabre."""
+    worker, _ = make_worker()
+    es, pt = worker.tracks
+    now = time.time()
+    for t in (es, pt):
+        t.connected = True
+        t.connected_at = now - 7
+        t.last_in_at = t.last_out_at = now - 60  # nada desde que conectó
+    worker._watchdog(now)  # sin voz de entrada, no se toca
+    assert not es.fresh
+    worker.voice.extend(now - i * 0.1 for i in range(60))  # 6 s de voz
+    worker._watchdog(now)
+    assert es.fresh and es.lag_cuts == 1 and "no devolvió nada" in worker.last_error
+    # La sesión secundaria se reabre si el original avanza y ella no tradujo nada.
+    assert not pt.fresh
+    worker.original.last_at = now - 1
+    worker._watchdog(now)
+    assert pt.fresh and "no tradujo nada" in worker.last_error
+
+
 async def test_browser_room_opens_no_session_until_audio_arrives():
     worker, _ = make_worker()
     es = worker.tracks[0]
