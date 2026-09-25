@@ -1,13 +1,14 @@
 // Vista de audiencia: elegir sala e idioma, y leer los subtítulos en vivo por Server-Sent Events.
 (() => {
   const app = document.getElementById("app");
+  const { t } = window.I18N;
   const store = {
     get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch { /* modo privado */ } },
   };
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const langName = { es: "Español", en: "English", pt: "Português", fr: "Français", de: "Deutsch", it: "Italiano" };
-  const STATE_TEXT = { live: "En vivo", connecting: "Esperando audio", reconnecting: "Reconectando la fuente", ended: "Terminó", stopped: "Detenida", offline: "Sin transmisión" };
+  const stateText = (state) => t(`state.${state}`);
 
   const theme = store.get("theme", "dark");
   document.documentElement.dataset.theme = theme;
@@ -25,19 +26,20 @@
   // -- selector de sala ------------------------------------------------------------------------
   async function renderPick() {
     app.replaceChildren(document.getElementById("t-pick").content.cloneNode(true));
+    window.I18N.apply(app);
     const list = app.querySelector(".rooms");
     const load = async () => {
       const data = await api("/api/sessions");
-      document.title = `Subtítulos en vivo, ${data.event}`;
+      document.title = t("title.pick", { event: data.event });
       if (!data.sessions.length) {
-        list.innerHTML = `<li class="empty">Todavía no hay salas configuradas.</li>`;
+        list.innerHTML = `<li class="empty">${esc(t("pick.empty"))}</li>`;
         return;
       }
       list.innerHTML = data.sessions.map((s) => `
         <li><a href="/s/${encodeURIComponent(s.id)}">
           <span class="dot ${dotClass(s.state)}" aria-hidden="true"></span>
           <span class="room-name">${esc(s.name)}</span>
-          <span class="room-meta">${[s.speaker, STATE_TEXT[s.state] || s.state].filter(Boolean).map(esc).join(", ")}</span>
+          <span class="room-meta">${[s.speaker, stateText(s.state)].filter(Boolean).map(esc).join(", ")}</span>
         </a></li>`).join("");
     };
     await load();
@@ -47,17 +49,18 @@
   // -- vista de subtítulos ---------------------------------------------------------------------
   async function renderView(sid) {
     app.replaceChildren(document.getElementById("t-view").content.cloneNode(true));
+    window.I18N.apply(app);
     const $ = (sel) => app.querySelector(sel);
     const main = $("main.captions");
     const params = new URLSearchParams(location.search);
     const data = await api("/api/sessions");
     const session = data.sessions.find((s) => s.id === sid);
     if (!session) {
-      main.innerHTML = `<p class="waiting">No existe la sala “${esc(sid)}”. <a href="/">Ver las salas disponibles</a>.</p>`;
+      main.innerHTML = `<p class="waiting">${esc(t("notfound", { sid }))} <a href="/">${esc(t("notfound.link"))}</a>.</p>`;
       return;
     }
     $(".name").textContent = session.name;
-    document.title = `${session.name}, subtítulos en vivo`;
+    document.title = t("title.live", { name: session.name });
 
     const codes = data.languages.map((l) => l.code);
     const browser = (navigator.language || "es").slice(0, 2);
@@ -71,20 +74,20 @@
 
     // Idiomas
     const langs = $(".langs");
-    const options = [...codes.map((c) => ({ code: c, name: langName[c] || c })), { code: "original", name: "Original" }];
+    const options = [...codes.map((c) => ({ code: c, name: langName[c] || c })), { code: "original", name: t("original") }];
     langs.innerHTML = options.map((o) => `<button class="btn" data-lang="${o.code}" lang="${o.code === "original" ? "" : o.code}">${esc(o.name)}</button>`).join("")
-      + `<button class="btn" id="dual" title="Mostrar el original debajo de la traducción">Con original</button>`;
+      + `<button class="btn" id="dual" title="${esc(t("dual.title"))}">${esc(t("dual"))}</button>`;
     let ping = () => {};  // se define más abajo, cuando existe la conexión
     const syncButtons = () => {
       langs.querySelectorAll("[data-lang]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.lang === lang)));
       $("#dual").setAttribute("aria-pressed", String(dual));
       // En el motor en vivo cada idioma corta sus propias líneas: no hay un original línea a línea.
       $("#dual").hidden = lang === "original" || tracked;
-      $("#theme").textContent = document.documentElement.dataset.theme === "light" ? "Tema oscuro" : "Tema claro";
+      $("#theme").textContent = document.documentElement.dataset.theme === "light" ? t("theme.dark") : t("theme.light");
       const canListen = speechLangs.includes(lang);
       $("#listen").hidden = !canListen;
       $("#listen").setAttribute("aria-pressed", String(player.on));
-      $("#listen").textContent = player.on ? "Escuchando" : "Escuchar";
+      $("#listen").textContent = player.on ? t("listening") : t("listen");
       if (player.on && (!canListen || player.lang !== lang)) {
         player.stop();
         if (canListen) player.start(sid, lang).catch(() => {});
@@ -175,10 +178,14 @@
 
     function renderDownloads() {
       const q = `lang=${encodeURIComponent(lang)}`;
-      const label = lang === "original" ? "original" : (langName[lang] || lang).toLowerCase();
-      $(".dl .files").innerHTML = [["txt", "Texto de la charla"], ["srt", "Subtítulos SRT"], ["vtt", "Subtítulos WebVTT"]]
-        .map(([fmt, name]) => `<a href="/api/sessions/${encodeURIComponent(sid)}/export.${fmt}?${q}" download>${name} (${esc(label)})</a>`).join("");
+      const label = lang === "original" ? t("original").toLowerCase() : (langName[lang] || lang);
+      $(".dl .files").innerHTML = [["txt", t("dl.txt")], ["srt", t("dl.srt")], ["vtt", t("dl.vtt")]]
+        .map(([fmt, name]) => `<a href="/api/sessions/${encodeURIComponent(sid)}/export.${fmt}?${q}" download>${esc(name)} (${esc(label)})</a>`).join("");
+      // Idioma de la interfaz (los subtítulos se eligen arriba).
+      $(".dl .ui-langs").innerHTML = window.I18N.langs.map((c) =>
+        `<button class="menu-item" data-ui="${c}" aria-pressed="${c === window.I18N.lang}" lang="${c}">${esc(window.I18N.names[c])}</button>`).join("");
     }
+    $(".dl").addEventListener("click", (e) => { const b = e.target.closest("[data-ui]"); if (b) window.I18N.set(b.dataset.ui); });
 
     // Subtítulos
     // Con el motor en vivo cada idioma es una pista propia (c.track); se muestra sólo la elegida.
@@ -214,7 +221,7 @@
       if (shown.length) {
         main.replaceChildren(...shown.map((c) => { const p = document.createElement("p"); paint(p, c); return p; }));
       } else if (caps.length) {
-        main.innerHTML = `<p class="waiting">Todavía no hay texto en este idioma. Aparece apenas llegue la primera frase.</p>`;
+        main.innerHTML = `<p class="waiting">${esc(t("waiting.lang"))}</p>`;
       }
       mark();
       scrollToEnd();
@@ -251,21 +258,21 @@
     const recapLang = () => (lang === "original" ? session.language || "es" : lang);
     async function openRecap() {
       recap.hidden = false;
-      recapBody.innerHTML = `<p class="meta">Resumiendo los últimos 5 minutos…</p>`;
+      recapBody.innerHTML = `<p class="meta">${esc(t("recap.loading"))}</p>`;
       try {
         const r = await fetch(`/api/sessions/${encodeURIComponent(sid)}/summary?lang=${encodeURIComponent(recapLang())}&minutes=5`);
         const d = await r.json();
         if (!r.ok) throw new Error(d.detail || r.status);
         if (d.empty || !d.bullets.length) {
-          recapBody.innerHTML = `<p class="meta">Todavía no se dijo lo suficiente para resumir. Probá en un rato.</p>`;
+          recapBody.innerHTML = `<p class="meta">${esc(t("recap.empty"))}</p>`;
           return;
         }
         const ago = Math.max(0, Math.round(Date.now() / 1000 - d.generated_at));
         const model = d.model.startsWith("gemma") ? "Gemma" : "Gemini";
         recapBody.innerHTML = `<ul>${d.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>`
-          + `<p class="meta">Resumen de los últimos 5 minutos, hecho con ${model} ${ago < 5 ? "recién" : `hace ${ago} s`}.</p>`;
+          + `<p class="meta">${esc(t("recap.meta", { model, when: ago < 5 ? t("recap.now") : t("recap.ago", { s: ago }) }))}</p>`;
       } catch (err) {
-        recapBody.innerHTML = `<p class="meta">No se pudo resumir ahora (${esc(err.message)}). Probá de nuevo en un minuto.</p>`;
+        recapBody.innerHTML = `<p class="meta">${esc(t("recap.error", { err: err.message }))}</p>`;
       }
     }
     $("#recap").addEventListener("click", () => (recap.hidden ? openRecap() : (recap.hidden = true)));
@@ -278,7 +285,7 @@
     const setConn = (ok) => {
       const state = ok ? stageState : "reconnecting";
       conn.className = `dot ${ok ? dotClass(stageState) : "bad"}`;
-      connText.textContent = ok ? (STATE_TEXT[state] || state) : "Reconectando";
+      connText.textContent = ok ? stateText(state) : t("conn.reconnecting");
     };
     const es = new EventSource(`/api/sessions/${encodeURIComponent(sid)}/stream`);
     es.onopen = () => setConn(true);
@@ -303,6 +310,6 @@
 
   const m = location.pathname.match(/^\/s\/([^/]+)/);
   (m ? renderView(decodeURIComponent(m[1])) : renderPick()).catch((err) => {
-    app.innerHTML = `<section class="pick"><h1>No se pudo cargar</h1><p class="lead">El servidor de subtítulos no respondió (${esc(err.message)}). Recargá la página en unos segundos.</p></section>`;
+    app.innerHTML = `<section class="pick"><h1>${esc(t("error.h1"))}</h1><p class="lead">${esc(t("error.lead", { err: err.message }))}</p></section>`;
   });
 })();
