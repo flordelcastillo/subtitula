@@ -1,7 +1,12 @@
 <img src="docs/img/logo.svg" width="300" alt="Subtitula">
 
+**Español** · [English](README.en.md)
+
 [![tests](https://github.com/flordelcastillo/subtitula/actions/workflows/tests.yml/badge.svg)](https://github.com/flordelcastillo/subtitula/actions/workflows/tests.yml)
 [![licencia](https://img.shields.io/badge/licencia-Apache%202.0-blue)](LICENSE)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776ab)
+![Gemini Live API](https://img.shields.io/badge/Gemini-Live%20API-f4b54a)
+![34 tests](https://img.shields.io/badge/tests-34-7fd1a8)
 
 **Subtítulos e interpretación simultánea en vivo, open source, para conferencias con muchas salas a la vez.**
 *Live captions and simultaneous interpretation for multi-room conferences, open source.*
@@ -11,6 +16,10 @@
 | El público, en su idioma | "¿Qué me perdí?" | Pantalla de sala con QR | Panel de producción |
 |---|---|---|---|
 | <img src="docs/img/celular-es.png" width="180" alt="Vista del celular con la charla en inglés subtitulada al español"> | <img src="docs/img/que-me-perdi.png" width="180" alt="Resumen de los últimos 5 minutos en inglés"> | <img src="docs/img/pantalla.png" width="300" alt="Pantalla de sala con subtítulos en español e inglés y código QR"> | <img src="docs/img/panel.png" width="300" alt="Panel de producción con dos salas en vivo, demoras y costo"> |
+
+## Índice
+
+[Para Nerdearla](#para-nerdearla) · [Los cinco criterios](#los-cinco-criterios-con-evidencia) · [Qué resuelve](#qué-resuelve) · [Probarlo en 2 minutos](#probarlo-en-2-minutos) · [Costos](#costos) · [Qué pasa si…](#qué-pasa-si) · [Cómo funciona](#cómo-funciona) · [Configuración](#configuración) · [Escala](#escala) · [Operación](#operación-durante-el-evento) · [Referencia](#referencia-qué-hay-adentro) · [Desarrollo](#desarrollo) · [Cómo se hizo](#cómo-se-hizo)
 
 ## Para Nerdearla
 
@@ -24,10 +33,6 @@ Hoy la conferencia usa dos herramientas comerciales, una para transcribir las ch
 ## En pocas palabras
 
 Cada escenario manda su audio (stream, micrófono, encoder o una pestaña del navegador) a la [Gemini Live API](https://ai.google.dev/gemini-api/docs/live), que devuelve palabra por palabra el original y la interpretación a español, inglés y portugués mientras la persona habla. El público escanea un QR y lee los subtítulos en el celular, en el idioma que elija, o escucha la interpretación con auriculares. Producción suma una pantalla por sala, un overlay para OBS/vMix, un panel con el estado de cada sala y la transcripción completa en SRT, VTT o texto al terminar.
-
-## English summary
-
-Subtitula is an open source live captioning and simultaneous interpretation system for multi-track conferences. Each stage streams its audio into one Gemini Live API session per target language (`gemini-3.5-live-translate-preview`): the original transcript and the translation arrive word by word while the speaker talks, typically 0.3 to 1 s after they pause. Each language is its own caption track, split into natural sentences of at most 84 characters. Phones can also play the spoken interpretation that Live Translate already generates (headphones on, no extra cost), and a "What did I miss?" button summarizes the last 5 minutes in the reader's language with Gemma. Secondary languages open a Live session only while someone reads or listens to them, and long silences are not streamed. Measured over 10 continuous minutes per talk: 0.34 s p50 / under 0.9 s p90 from the speaker's pause to the last translated word, with no accumulated drift ([evidence](docs/evidencia)). A lightweight hub fans captions out over Server-Sent Events to phones (pick stage + language), an OBS/vMix overlay and a production dashboard (audio level, latency p50/p90, errors, live sessions, real cost per room from official prices). Transcripts export to SRT/VTT/TXT. Scale by running one worker container per stage. Fallback engines: chunked `gemini-3.5-transcribe` + Flash-Lite/Gemma translation, and fully local faster-whisper + Gemma via Ollama.
 
 ## Los cinco criterios, con evidencia
 
@@ -156,6 +161,18 @@ Tres cosas bajan la cuenta del motor en vivo sin tocar la calidad:
 
 Los motores siguientes quedan como alternativa (`--engine gemini`, `--engine local`).
 
+### Recorrido de una frase por el código
+
+1. **Entrada** (`subtitula/audio.py`). ffmpeg abre la fuente (archivo, micrófono, HLS, RTMP, SRT, UDP o YouTube) y entrega PCM mono de 16 kHz en bloques de 100 ms. Si la sala es `browser`, el bloque llega por el WebSocket de `/enviar`. Una fuente en vivo que se corta se reintenta con espera exponencial.
+2. **Reparto** (`subtitula/live.py`, `LiveSessionWorker._forward`). Tras 10 s por debajo de −50 dBFS deja de enviar (pausa en silencio) y guarda medio segundo de pre-roll para no perder la primera sílaba al reanudar. Cada bloque va a un `LiveTrack` por idioma de destino; una pista sin público está en espera y no abre sesión (`set_demand`, alimentado por el sondeo de las vistas).
+3. **Sesión Live** (`LiveTrack.run`). Abre `gemini-3.5-live-translate-preview` con `translation_config` (eco del idioma de destino), transcripción de entrada con el glosario como vocabulario, session resumption y compresión de contexto. Recibe tres flujos: `input_transcription` (el original, sólo desde la sesión principal), `output_transcription` (la traducción) y `inline_data` (la voz interpretada).
+4. **Líneas** (`TrackBuilder`). Cada pista arma sus líneas: corta al terminar una oración (también si el fin viene dentro de un fragmento), en una coma si ya es larga, a los 84 caracteres o tras 2 s sin palabras. `glossary.py` corrige la ortografía canónica y los alias antes de publicar. La demora se mide desde la última pausa del orador (`_pause_lag`).
+5. **Publicación** (`worker.py` → `hub.py`). Cada actualización de línea llega a `Hub.caption`, que la guarda en `data/<sala>.jsonl` y la reparte por Server-Sent Events. La vista (`web/viewer.js`) repinta la línea con el mismo número de secuencia, así crece palabra por palabra.
+6. **Voz** (`Hub.speech`). Los bloques PCM de la interpretación van al WebSocket `/listen` de quien esté escuchando ese idioma; el celular los reproduce con `AudioContext`, con un colchón chico y salteando silencios si se atrasa.
+7. **Vigilancia** (`_watchdog`, cada 0,5 s). Reabre la sesión que abrió muda (6 s con voz sin texto), la que no traduce mientras el original avanza, o la que entregó una frase más de 6 s tarde. Cada 2 s el worker publica su estado (audio, demoras, errores, costo con `pricing.py`) y recibe del hub el glosario vigente y la demanda de idiomas.
+8. **Agenda** (`Hub.apply_agenda`, cada 10 s). Cuando el reloj entra en una charla, cambia nombre, orador, tema, glosario (en caliente) e idioma (reabriendo las sesiones).
+9. **Salida**. `export.srt|vtt|txt` reconstruye cada pista desde el `.jsonl` con cues de 0,8 s como mínimo; `summary` resume los últimos minutos con Gemma; `/metrics` expone lo mismo que el panel.
+
 **Segmentador** (`subtitula/segmenter.py`, motores por tramos). Mide la energía en frames de 30 ms contra un piso de ruido que se adapta a la sala. Cierra un tramo cuando el orador hace una pausa de 300 ms después de al menos 1,2 s de habla. Si nadie hace pausa, corta a los 5 s en el frame más silencioso del último segundo y medio, así nunca parte una palabra. Los tramos sin voz (aplausos, silencio, música) no se mandan al modelo y no cuestan nada.
 
 **Motor por tramos** (`subtitula/engines/gemini.py`, `--engine gemini`). Trabaja en dos etapas:
@@ -227,19 +244,25 @@ Fuentes posibles en `source`:
 
 `config/glossary.yaml` tiene los términos globales. Durante el evento se corrigen desde `/admin`, sala por sala, sin reiniciar nada: el cambio llega al worker en menos de 2 segundos, aunque corra en otra máquina.
 
-Variables de entorno:
+Variables de entorno (todas opcionales salvo la clave):
 
 | Variable | Para qué |
 |---|---|
-| `GEMINI_API_KEY` | Clave de Gemini |
-| `SUBTITULA_LIVE_MODEL` | Modelo de la Live API (por defecto `gemini-3.5-live-translate-preview`) |
-| `SUBTITULA_ASR_MODEL` | Modelo(s) de transcripción, separados por coma (por defecto `gemini-3.5-transcribe`) |
-| `SUBTITULA_GEMINI_MODEL` | Modelos de traducción, separados por coma, en orden de preferencia |
-| `SUBTITULA_GEMINI_MODE` | `asr` (dos etapas, por defecto) o `single` (una llamada de audio a JSON) |
-| `SUBTITULA_TOKEN` | Protege la ingesta de workers, el envío de audio y el glosario |
-| `SUBTITULA_PUBLIC_URL` | URL pública que se codifica en los QR |
-| `SUBTITULA_PRICE_INPUT_PER_M`, `SUBTITULA_PRICE_OUTPUT_PER_M` | Precio por millón de tokens, para el costo del panel |
+| `GEMINI_API_KEY` | Clave de Gemini (o en `.env`) |
+| `SUBTITULA_CONFIG`, `SUBTITULA_GLOSSARY`, `SUBTITULA_DATA` | Rutas de `sessions.yaml`, `glossary.yaml` y la carpeta de los `.jsonl` |
 | `SUBTITULA_ENGINE` | `gemini-live` (por defecto), `gemini`, `local` o `fake` |
+| `SUBTITULA_LIVE_MODEL` | Modelo de la Live API (por defecto `gemini-3.5-live-translate-preview`) |
+| `SUBTITULA_ASR_MODEL`, `SUBTITULA_GEMINI_MODEL`, `SUBTITULA_GEMINI_MODE`, `SUBTITULA_GEMINI_TIMEOUT` | Motor por tramos: modelo de transcripción, pool de traducción (lista separada por coma), `asr` o `single`, timeout |
+| `SUBTITULA_SUMMARY_MODEL` | Modelos de "¿Qué me perdí?" (por defecto Gemma 4 y luego flash-lite) |
+| `SUBTITULA_TOKEN` | Protege la ingesta de workers, el audio del navegador y el glosario. Obligatorio con Compose |
+| `SUBTITULA_PUBLIC_URL` | URL pública que se codifica en los QR y se muestra en la pantalla de sala |
+| `SUBTITULA_HUB` | En `subtitula worker`, URL del hub |
+| `SUBTITULA_ON_DEMAND`, `SUBTITULA_LINGER_S` | Idiomas bajo demanda (por defecto activado, 120 s sin público) |
+| `SUBTITULA_PAUSE_AFTER_S`, `SUBTITULA_SILENCE_DBFS` | Pausa en silencio (10 s por debajo de −50 dBFS) |
+| `SUBTITULA_STALL_S`, `SUBTITULA_STALL_CHARS`, `SUBTITULA_MAX_LAG_S`, `SUBTITULA_STARTUP_S` | Vigía: 10 s trabada con 150 caracteres sin traducir, 6 s de atraso, 6 s muda al arrancar |
+| `SUBTITULA_PRICE_INPUT_PER_M`, `SUBTITULA_PRICE_OUTPUT_PER_M` | Precio de respaldo (por millón de tokens) para un modelo que no está en `pricing.py` |
+| `OLLAMA_URL`, `SUBTITULA_OLLAMA_MODEL`, `SUBTITULA_WHISPER_MODEL`, `SUBTITULA_WHISPER_DEVICE`, `SUBTITULA_WHISPER_COMPUTE` | Motor local |
+| `SUBTITULA_FAKE_DELAY`, `SUBTITULA_FAKE_TWO_STAGE` | Motor de prueba: demora simulada y modo en dos etapas |
 
 ## Escala
 
@@ -299,6 +322,68 @@ Para más de 20 o 30 salas o miles de personas: varios workers por máquina, el 
 - `/metrics` expone lo mismo que el panel en formato Prometheus, para sumarlo al Grafana del evento.
 
 **Al terminar**, la charla se descarga en `/api/sessions/<sala>/export.srt?lang=es` (o `.vtt` o `.txt`, en cualquier idioma), lista para subir con el video.
+
+## Referencia: qué hay adentro
+
+### Línea de comandos
+
+| Comando | Qué hace |
+|---|---|
+| `subtitula serve [--engine X] [--port N]` | Hub y todos los escenarios de `sessions.yaml` en un proceso. El modo con todo: audio desde el navegador, voz, agenda |
+| `subtitula hub` | Sólo el hub: vistas, panel, API, exportación. Los workers publican en él |
+| `subtitula worker --session ID --hub URL [--source S] [--name N]` | Un escenario en cualquier máquina; publica subtítulos y estado en el hub y recibe de él glosario y demanda |
+| `subtitula file charla.mp3 [--language en] [--languages es,pt] [--both] [--realtime] [--out DIR]` | Subtitula un archivo en la terminal y deja `.srt`, `.vtt` y `.txt` por idioma; informa demora y tokens |
+
+### Páginas
+
+`/` y `/s/<sala>?lang=es` (público) · `/pantalla/<sala>?lang=es&lang2=en` (tele de la sala) · `/overlay/<sala>?lang=es[&lines=2&size=44&hide=8&pos=top&box=0&bg=00b140]` (OBS/vMix) · `/admin` (producción) · `/enviar/<sala>` (audio desde el navegador).
+
+### API HTTP
+
+| Método y ruta | Qué devuelve o hace |
+|---|---|
+| `GET /api/sessions?watching=<sala>&lang=<idioma>` | Salas, idiomas del evento, estado, público y agenda de cada una. Los parámetros informan qué idioma se está mirando (idiomas bajo demanda) |
+| `GET /api/sessions/<sala>/captions?since=<seq>&limit=<n>` | Historial de subtítulos |
+| `GET /api/sessions/<sala>/stream` | Subtítulos en vivo por Server-Sent Events; con `Last-Event-ID` (o `?since=`) reenvía sólo lo que faltó |
+| `GET /api/sessions/<sala>/live.txt?lang=es&lines=2` | Las últimas líneas en texto plano, para títulos de vMix o CasparCG |
+| `GET /api/sessions/<sala>/summary?lang=es&minutes=5` | "¿Qué me perdí?": viñetas con Gemma; cacheado 60 s por sala e idioma |
+| `GET /api/sessions/<sala>/export.srt|vtt|txt?lang=es` | La charla completa de esa pista |
+| `GET /api/sessions/<sala>/qr.svg?lang=es` | QR a `/s/<sala>` con la URL pública |
+| `PUT /api/sessions/<sala>/glossary` (token) | Reemplaza el glosario de la sala; aplica desde la línea siguiente y reabre las sesiones Live |
+| `POST /api/sessions/<sala>/glossary/suggest` (token) | Términos sugeridos por Gemini a partir de título, orador, tema y el texto que se mande |
+| `WS /api/sessions/<sala>/listen?lang=es` | Voz de la interpretación: un JSON con `rate` y después bloques PCM s16le |
+| `WS /api/sessions/<sala>/audio?token=` | Audio desde el navegador (PCM 16 kHz) para una sala `browser` |
+| `POST /api/ingest/<sala>` (token) | Un worker remoto publica un subtítulo o su estado; la respuesta trae glosario y demanda |
+| `GET /api/status` | Estado por sala para el panel: nivel de audio, demoras p50/p90, errores, sesiones, cortes, costo |
+| `GET /metrics` | Lo mismo en formato Prometheus |
+| `GET /healthz` | Vida del proceso |
+
+### Módulos
+
+| Archivo | Qué hace |
+|---|---|
+| `subtitula/cli.py` | Comandos, carga de `.env` |
+| `subtitula/config.py` | `sessions.yaml`, `glossary.yaml`, agenda (`TalkConfig`, `current_and_next`) |
+| `subtitula/audio.py` | Fuentes con ffmpeg y cola de audio del navegador |
+| `subtitula/live.py` | Motor `gemini-live`: `LiveTrack` (una sesión por idioma), `TrackBuilder` (líneas por pista), `LiveSessionWorker` (demanda, pausa en silencio, vigía, voz) |
+| `subtitula/worker.py` | Base común (estado, costo, glosario) y worker por tramos con publicación en orden; `HttpPublisher` para workers remotos |
+| `subtitula/segmenter.py` | Corte por pausas para los motores por tramos |
+| `subtitula/engines/` | `gemini.py` (transcribe + pool de traducción con failover), `local.py` (faster-whisper + Gemma por Ollama), `fake.py` (tests y carga) |
+| `subtitula/hub.py` | FastAPI: SSE, ingesta, voz, demanda, agenda, resumen, exportación, QR, métricas |
+| `subtitula/captions.py` | Modelo `Caption`, pistas y exportación SRT/VTT/TXT |
+| `subtitula/glossary.py`, `pricing.py`, `summary.py` | Corrección de glosario con alias, precios oficiales por modelo, resumen y sugerencias |
+| `subtitula/web/` | `index.html` + `viewer.js` (público), `i18n.js` (es/en/pt), `pantalla.html`, `overlay.html`, `admin.html`, `enviar.html`, `style.css` |
+| `demo/` | La demo pública: repetición de una corrida real |
+
+### Scripts de medición
+
+| Script | Para qué |
+|---|---|
+| `scripts/check_gemini.py` | Prueba la clave y mide transcripción y traducción por modelo |
+| `scripts/drift_test.py` | Demora minuto a minuto de una charla larga (la evidencia de 10 minutos) |
+| `scripts/loadtest.py --mode live` | Carga: N salas y M personas sin gastar API |
+| `scripts/record_replay.py` | Graba una corrida real para la demo y los SRT de evidencia |
+| `scripts/probe_live.py` | Sonda de la Live API para ver los eventos crudos |
 
 ## Desarrollo
 

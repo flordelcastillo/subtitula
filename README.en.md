@@ -1,7 +1,12 @@
 <img src="docs/img/logo.svg" width="300" alt="Subtitula">
 
+[Español](README.md) · **English**
+
 [![tests](https://github.com/flordelcastillo/subtitula/actions/workflows/tests.yml/badge.svg)](https://github.com/flordelcastillo/subtitula/actions/workflows/tests.yml)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776ab)
+![Gemini Live API](https://img.shields.io/badge/Gemini-Live%20API-f4b54a)
+![34 tests](https://img.shields.io/badge/tests-34-7fd1a8)
 
 **Open source live captions and simultaneous interpretation for multi-room conferences, built on the Gemini Live API.**
 
@@ -10,6 +15,10 @@
 | The audience, in their language | "What did I miss?" | Room screen with QR | Production dashboard |
 |---|---|---|---|
 | <img src="docs/img/celular-es.png" width="180" alt="Phone view with an English talk captioned in Spanish"> | <img src="docs/img/que-me-perdi.png" width="180" alt="Summary of the last 5 minutes in English"> | <img src="docs/img/pantalla.png" width="300" alt="Room screen with Spanish and English captions and a QR code"> | <img src="docs/img/panel.png" width="300" alt="Dashboard with two live rooms, latencies and cost"> |
+
+## Contents
+
+[For Nerdearla](#for-nerdearla) · [The five criteria](#the-five-judging-criteria-with-evidence) · [Try it](#try-it-in-2-minutes) · [Costs](#costs) · [What if…](#what-if) · [How it works](#how-it-works) · [Scale](#scale) · [Operation](#operation-during-the-event) · [Configuration](#configuration) · [Reference](#reference-what-is-inside) · [Development](#development) · [How it was built](#how-it-was-built)
 
 ## For Nerdearla
 
@@ -115,6 +124,18 @@ On-demand languages close unused sessions after 2 minutes without audience; long
 - **Live engine** (`subtitula/live.py`). One `gemini-3.5-live-translate-preview` session per room and target language, fed with 100 ms audio blocks. Each session returns the input transcription (taken from one session) and the translation, word by word, plus the translated speech. Config: `translation_config` with `echo_target_language`, input transcription with the glossary as `custom_vocabulary` and the room language as a hint, session resumption and sliding-window compression.
 - **One track per language.** The original and each translation build their own lines (sentence end, a comma once the line is long, 84 characters, or 2 s without new words), so Spanish reads as Spanish. The open line grows on screen word by word.
 - **Hub** (`subtitula/hub.py`). Only moves text: SSE with `Last-Event-ID`, a WebSocket for the interpretation audio (the phone player keeps a small buffer and skips silences if it falls behind), JSONL persistence and exports.
+### A sentence's path through the code
+
+1. **Input** (`subtitula/audio.py`). ffmpeg opens the source (file, microphone, HLS, RTMP, SRT, UDP or YouTube) and yields 16 kHz mono PCM in 100 ms blocks; a `browser` room gets them over the `/enviar` WebSocket. A dropped live source is retried with exponential backoff.
+2. **Fan-out** (`subtitula/live.py`, `LiveSessionWorker._forward`). After 10 s below −50 dBFS nothing is sent (silence pause) and half a second of pre-roll is kept so the first syllable is not lost on resume. Each block goes to one `LiveTrack` per target language; a track nobody reads or listens to waits and opens no session (`set_demand`, fed by the views' polling).
+3. **Live session** (`LiveTrack.run`). Opens `gemini-3.5-live-translate-preview` with `translation_config` (echo of the target language), input transcription with the glossary as vocabulary, session resumption and context compression. Three streams come back: `input_transcription` (the original, taken from the primary session only), `output_transcription` (the translation) and `inline_data` (the spoken interpretation).
+4. **Lines** (`TrackBuilder`). Each track builds its own lines: cut at a sentence end (even inside a fragment), at a comma once the line is long, at 84 characters or after 2 s without words. `glossary.py` enforces canonical spelling and aliases before publishing. Delay is measured from the speaker's last pause (`_pause_lag`).
+5. **Publishing** (`worker.py` → `hub.py`). Every line update reaches `Hub.caption`, which appends it to `data/<room>.jsonl` and fans it out over Server-Sent Events; the viewer (`web/viewer.js`) repaints the line with the same sequence number, so it grows word by word.
+6. **Voice** (`Hub.speech`). PCM blocks of the interpretation go to the `/listen` WebSocket of whoever listens in that language; the phone plays them with `AudioContext`, keeping a small buffer and skipping silences if it falls behind.
+7. **Watchdog** (`_watchdog`, every 0.5 s). Reopens a session that opened mute (6 s of voice with no text), one that stops translating while the original advances, or one that delivered a sentence more than 6 s late. Every 2 s the worker publishes its status (audio, delays, errors, cost via `pricing.py`) and receives the current glossary and language demand from the hub.
+8. **Agenda** (`Hub.apply_agenda`, every 10 s). When the clock enters a talk, name, speaker, topic, glossary (hot) and language (reopening sessions) switch by themselves.
+9. **Output**. `export.srt|vtt|txt` rebuilds each track from the `.jsonl` with cues of at least 0.8 s; `summary` summarizes the last minutes with Gemma; `/metrics` exposes what the dashboard shows.
+
 - **Fallback engines.** Chunked (`subtitula/engines/gemini.py`): a pause-aware segmenter cuts 1 to 5 s chunks, `gemini-3.5-transcribe` returns the original in 2 to 3 s and a model pool (Flash-Lite, Gemma) translates and updates the line in place. Local (`subtitula/engines/local.py`): faster-whisper plus Gemma 4 through Ollama.
 
 ## Scale
@@ -179,16 +200,83 @@ python scripts/loadtest.py --mode live --stages 20 --viewers 25 --seconds 45
 
 | Variable | Purpose |
 |---|---|
-| `GEMINI_API_KEY` | Gemini API key (or `.env`) |
+| `GEMINI_API_KEY` | Gemini API key (or in `.env`) |
+| `SUBTITULA_CONFIG`, `SUBTITULA_GLOSSARY`, `SUBTITULA_DATA` | Paths of `sessions.yaml`, `glossary.yaml` and the `.jsonl` folder |
 | `SUBTITULA_ENGINE` | `gemini-live` (default), `gemini`, `local` or `fake` |
 | `SUBTITULA_LIVE_MODEL` | Live API model (default `gemini-3.5-live-translate-preview`) |
-| `SUBTITULA_ASR_MODEL`, `SUBTITULA_GEMINI_MODEL` | Chunked engine: transcription model and translation model pool |
-| `SUBTITULA_TOKEN` | Protects worker ingestion, browser audio and glossary edits |
-| `SUBTITULA_PUBLIC_URL` | Public URL encoded in the QR codes |
+| `SUBTITULA_ASR_MODEL`, `SUBTITULA_GEMINI_MODEL`, `SUBTITULA_GEMINI_MODE`, `SUBTITULA_GEMINI_TIMEOUT` | Chunked engine: transcription model, translation pool (comma list), `asr` or `single`, timeout |
+| `SUBTITULA_SUMMARY_MODEL` | "What did I miss?" models (default Gemma 4, then flash-lite) |
+| `SUBTITULA_TOKEN` | Protects worker ingestion, browser audio and glossary edits. Mandatory with Compose |
+| `SUBTITULA_PUBLIC_URL` | Public URL encoded in QR codes and shown on the room screen |
+| `SUBTITULA_HUB` | For `subtitula worker`, the hub URL |
 | `SUBTITULA_ON_DEMAND`, `SUBTITULA_LINGER_S` | On-demand languages (default on, 120 s without audience) |
-| `SUBTITULA_PAUSE_AFTER_S`, `SUBTITULA_SILENCE_DBFS` | Silence pause (default 10 s below −50 dBFS) |
-| `SUBTITULA_STALL_S`, `SUBTITULA_MAX_LAG_S` | Lag watchdog (default 10 s stalled, 6 s late) |
-| `OLLAMA_URL`, `SUBTITULA_OLLAMA_MODEL`, `SUBTITULA_WHISPER_MODEL` | Local engine |
+| `SUBTITULA_PAUSE_AFTER_S`, `SUBTITULA_SILENCE_DBFS` | Silence pause (10 s below −50 dBFS) |
+| `SUBTITULA_STALL_S`, `SUBTITULA_STALL_CHARS`, `SUBTITULA_MAX_LAG_S`, `SUBTITULA_STARTUP_S` | Watchdog: 10 s stalled with 150 untranslated characters, 6 s late, 6 s mute at start |
+| `SUBTITULA_PRICE_INPUT_PER_M`, `SUBTITULA_PRICE_OUTPUT_PER_M` | Fallback price (per million tokens) for a model missing from `pricing.py` |
+| `OLLAMA_URL`, `SUBTITULA_OLLAMA_MODEL`, `SUBTITULA_WHISPER_MODEL`, `SUBTITULA_WHISPER_DEVICE`, `SUBTITULA_WHISPER_COMPUTE` | Local engine |
+| `SUBTITULA_FAKE_DELAY`, `SUBTITULA_FAKE_TWO_STAGE` | Test engine: simulated delay and two-stage mode |
+
+## Reference: what is inside
+
+### Command line
+
+| Command | What it does |
+|---|---|
+| `subtitula serve [--engine X] [--port N]` | Hub and every room of `sessions.yaml` in one process. The mode with everything: browser audio, voice, agenda |
+| `subtitula hub` | Hub only: views, dashboard, API, exports. Workers publish into it |
+| `subtitula worker --session ID --hub URL [--source S] [--name N]` | One room on any machine; publishes captions and status to the hub and receives glossary and demand from it |
+| `subtitula file talk.mp3 [--language en] [--languages es,pt] [--both] [--realtime] [--out DIR]` | Captions a file in the terminal and writes `.srt`, `.vtt` and `.txt` per language; reports delay and tokens |
+
+### Pages
+
+`/` and `/s/<room>?lang=es` (audience) · `/pantalla/<room>?lang=es&lang2=en` (room TV) · `/overlay/<room>?lang=es[&lines=2&size=44&hide=8&pos=top&box=0&bg=00b140]` (OBS/vMix) · `/admin` (production) · `/enviar/<room>` (browser audio).
+
+### HTTP API
+
+| Method and path | What it returns or does |
+|---|---|
+| `GET /api/sessions?watching=<room>&lang=<lang>` | Rooms, event languages, state, audience and agenda. The parameters report which language is being watched (on-demand languages) |
+| `GET /api/sessions/<room>/captions?since=<seq>&limit=<n>` | Caption history |
+| `GET /api/sessions/<room>/stream` | Live captions over Server-Sent Events; with `Last-Event-ID` (or `?since=`) only what was missed |
+| `GET /api/sessions/<room>/live.txt?lang=es&lines=2` | Last lines as plain text, for vMix or CasparCG titles |
+| `GET /api/sessions/<room>/summary?lang=es&minutes=5` | "What did I miss?": bullets with Gemma; cached 60 s per room and language |
+| `GET /api/sessions/<room>/export.srt|vtt|txt?lang=es` | The whole talk for that track |
+| `GET /api/sessions/<room>/qr.svg?lang=es` | QR to `/s/<room>` with the public URL |
+| `PUT /api/sessions/<room>/glossary` (token) | Replaces the room glossary; applies from the next line and reopens Live sessions |
+| `POST /api/sessions/<room>/glossary/suggest` (token) | Terms suggested by Gemini from title, speaker, topic and any text sent |
+| `WS /api/sessions/<room>/listen?lang=es` | Interpretation voice: one JSON with `rate`, then s16le PCM blocks |
+| `WS /api/sessions/<room>/audio?token=` | Browser audio (16 kHz PCM) for a `browser` room |
+| `POST /api/ingest/<room>` (token) | A remote worker publishes a caption or its status; the reply carries glossary and demand |
+| `GET /api/status` | Per-room state for the dashboard: audio level, p50/p90 delays, errors, sessions, cuts, cost |
+| `GET /metrics` | The same in Prometheus format |
+| `GET /healthz` | Liveness |
+
+### Modules
+
+| File | What it does |
+|---|---|
+| `subtitula/cli.py` | Commands, `.env` loading |
+| `subtitula/config.py` | `sessions.yaml`, `glossary.yaml`, agenda (`TalkConfig`, `current_and_next`) |
+| `subtitula/audio.py` | ffmpeg sources and the browser audio queue |
+| `subtitula/live.py` | `gemini-live` engine: `LiveTrack` (one session per language), `TrackBuilder` (lines per track), `LiveSessionWorker` (demand, silence pause, watchdog, voice) |
+| `subtitula/worker.py` | Shared base (status, cost, glossary) and the chunked worker with in-order publishing; `HttpPublisher` for remote workers |
+| `subtitula/segmenter.py` | Pause-aware chunking for the chunked engines |
+| `subtitula/engines/` | `gemini.py` (transcribe + translation pool with failover), `local.py` (faster-whisper + Gemma via Ollama), `fake.py` (tests and load) |
+| `subtitula/hub.py` | FastAPI: SSE, ingestion, voice, demand, agenda, summary, exports, QR, metrics |
+| `subtitula/captions.py` | `Caption` model, tracks and SRT/VTT/TXT export |
+| `subtitula/glossary.py`, `pricing.py`, `summary.py` | Glossary fixing with aliases, official prices per model, summary and suggestions |
+| `subtitula/web/` | `index.html` + `viewer.js` (audience), `i18n.js` (es/en/pt), `pantalla.html`, `overlay.html`, `admin.html`, `enviar.html`, `style.css` |
+| `demo/` | The public demo: replay of a real run |
+
+### Measurement scripts
+
+| Script | Purpose |
+|---|---|
+| `scripts/check_gemini.py` | Checks the key and measures transcription and translation per model |
+| `scripts/drift_test.py` | Minute-by-minute delay over a long talk (the 10-minute evidence) |
+| `scripts/loadtest.py --mode live` | Load: N rooms and M viewers without API cost |
+| `scripts/record_replay.py` | Records a real run for the demo and the evidence SRT files |
+| `scripts/probe_live.py` | Live API probe to see raw events |
 
 ## Development
 
