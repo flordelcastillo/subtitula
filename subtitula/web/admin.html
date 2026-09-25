@@ -32,6 +32,7 @@
   .bad { color: var(--bad); }
   .err { color: var(--bad); font-size: .85rem; max-width: 22rem; overflow-wrap: anywhere; }
   details summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
+  textarea.about { min-height: 3rem; }
   textarea { width: 100%; min-width: 16rem; min-height: 6rem; background: var(--bg); border: 1px solid var(--line); border-radius: .5rem; padding: .5rem; margin: .5rem 0; }
   .token { display: flex; gap: .5rem; align-items: center; color: var(--muted); font-size: .9rem; }
   .token input { background: var(--surface); border: 1px solid var(--line); border-radius: .5rem; padding: .3rem .6rem; width: 12rem; }
@@ -104,6 +105,8 @@
       <td class="num">${s.cost_usd != null ? `US$ ${s.cost_usd.toFixed(3)}` : "–"}<div class="sub">${s.cost_usd_per_hour != null ? `US$ ${s.cost_usd_per_hour}/h` : ""}</div></td>
       <td><details ${open.has(s.id) ? "open" : ""}><summary>${(s.glossary || []).length} términos</summary>
         <textarea aria-label="Glosario de ${esc(s.name)}, un término por línea">${esc((s.glossary || []).join("\n"))}</textarea>
+        <textarea class="about" aria-label="Descripción de la charla (opcional)" placeholder="Opcional: pegá la descripción de la charla de la agenda"></textarea>
+        <button class="btn" data-suggest="${esc(s.id)}">Sugerir con IA</button>
         <button class="btn" data-save="${esc(s.id)}">Guardar glosario</button> <span class="sub" data-msg></span></details></td>
     </tr>`;
   }
@@ -142,6 +145,22 @@
       return;
     }
     if (e.target.closest("#qr")) { document.getElementById("qr").hidden = true; return; }
+    const suggest = e.target.closest("[data-suggest]");
+    if (suggest) {
+      // Gemini propone términos a partir del título, el orador y el tema; quien opera revisa y guarda.
+      const tr = suggest.closest("tr"), msg = tr.querySelector("[data-msg]"), box = tr.querySelector("textarea:not(.about)");
+      editing.add(suggest.dataset.suggest);
+      msg.textContent = "Buscando términos…";
+      const r = await fetch(`/api/sessions/${encodeURIComponent(suggest.dataset.suggest)}/glossary/suggest`, {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${tokenInput.value}` },
+        body: JSON.stringify({ text: tr.querySelector("textarea.about").value }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { msg.textContent = r.status === 401 ? "Token incorrecto" : (d.detail || `Error ${r.status}`); return; }
+      box.value = [box.value.trim(), ...d.suggested].filter(Boolean).join("\n");
+      msg.textContent = d.suggested.length ? `${d.suggested.length} términos sugeridos: revisalos y tocá Guardar` : "No hay términos nuevos para sugerir";
+      return;
+    }
     const save = e.target.closest("[data-save]");
     if (!save) return;
     const tr = save.closest("tr");

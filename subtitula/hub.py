@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, Response, Streami
 
 from .captions import Caption, to_srt, to_txt, to_vtt
 from .config import LANG_NAMES, AppConfig, SessionConfig
-from .summary import Summarizer
+from .summary import Summarizer, suggest_glossary
 
 log = logging.getLogger(__name__)
 
@@ -175,6 +175,10 @@ class LocalPublisher:
 
     async def status(self, session: str, status: dict) -> dict:
         return await self.hub.status_update(session, status)
+
+
+def _s(ms: int | None) -> float | None:
+    return ms / 1000 if ms is not None else None
 
 
 def create_app(config: AppConfig, token: str = "", run_workers: bool = False) -> FastAPI:
@@ -355,6 +359,37 @@ def create_app(config: AppConfig, token: str = "", run_workers: bool = False) ->
                 "viewers": sum(r["viewers"] for r in rows), "listeners": sum(r["listeners"] for r in rows),
                 "time": time.time()}
 
+    @app.get("/metrics", include_in_schema=False)
+    async def metrics():
+        """Métricas en formato Prometheus, para sumar Subtitula al Grafana del evento."""
+        gauges = {
+            "subtitula_live": ("1 si la sala está transmitiendo", lambda i, st: 1 if i["state"] == "live" else 0),
+            "subtitula_audio_level_dbfs": ("Nivel del audio que entra", lambda i, st: st.get("level_dbfs")),
+            "subtitula_latency_p50_seconds": ("Demora del original, p50",
+                                              lambda i, st: _s(st.get("latency_p50_ms"))),
+            "subtitula_latency_p90_seconds": ("Demora del original, p90",
+                                              lambda i, st: _s(st.get("latency_p90_ms"))),
+            "subtitula_translation_p50_seconds": ("Demora de la traducción, p50",
+                                                  lambda i, st: _s(st.get("translation_p50_ms"))),
+            "subtitula_translation_p90_seconds": ("Demora de la traducción, p90",
+                                                  lambda i, st: _s(st.get("translation_p90_ms"))),
+            "subtitula_captions_total": ("Líneas de subtítulo publicadas", lambda i, st: i["captions"]),
+            "subtitula_errors_total": ("Errores de la sala", lambda i, st: st.get("errors", 0)),
+            "subtitula_lag_cuts_total": ("Sesiones cortadas y retomadas por atraso", lambda i, st: st.get("lag_cuts", 0)),
+            "subtitula_viewers": ("Personas leyendo", lambda i, st: i["viewers"]),
+            "subtitula_listeners": ("Personas escuchando la interpretación", lambda i, st: i["listeners"]),
+            "subtitula_cost_usd_total": ("Costo acumulado según precios oficiales", lambda i, st: st.get("cost_usd", 0)),
+        }
+        lines = []
+        for name, (help_, value) in gauges.items():
+            lines += [f"# HELP {name} {help_}", f"# TYPE {name} gauge"]
+            for sid in hub.meta:
+                info, st = hub.session_info(sid), hub.status.get(sid, {})
+                v = value(info, st)
+                if v is not None:
+                    lines.append(f'{name}{{sala="{sid}"}} {float(v)}')
+        return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
+
     @app.post("/api/ingest/{sid}")
     async def ingest(sid: str, request: Request, authorization: str | None = Header(default=None)):
         hub.check_token((authorization or "").removeprefix("Bearer ").strip() or None)
@@ -371,6 +406,22 @@ def create_app(config: AppConfig, token: str = "", run_workers: bool = False) ->
         body = await request.json()
         hub.set_glossary(sid, [str(t) for t in body.get("terms", [])])
         return {"glossary": hub.glossary[sid]}
+
+    @app.post("/api/sessions/{sid}/glossary/suggest")
+    async def glossary_suggest(sid: str, request: Request, authorization: str | None = Header(default=None)):
+        """Sugerencias de glosario a partir de los datos de la charla (se revisan antes de guardar)."""
+        hub.check_token((authorization or "").removeprefix("Bearer ").strip() or None)
+        _get(sid)
+        if not (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")):
+            raise HTTPException(503, "Las sugerencias necesitan GEMINI_API_KEY")
+        body = await request.json() if await request.body() else {}
+        s = hub.meta[sid]
+        try:
+            terms = await suggest_glossary(summarizer._engine(), s.name, s.speaker, s.topic,
+                                           str(body.get("text", "")), hub.glossary.get(sid, []))
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(503, "No se pudieron generar sugerencias; probá en un minuto") from exc
+        return {"suggested": terms}
 
     @app.websocket("/api/sessions/{sid}/listen")
     async def listen(ws: WebSocket, sid: str, lang: str = "es"):

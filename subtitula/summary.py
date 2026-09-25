@@ -21,6 +21,33 @@ DEFAULT_MODELS = "gemma-4-26b-a4b-it,gemini-flash-lite-latest"
 FRESH_S = 60
 
 
+async def suggest_glossary(engine, name: str, speaker: str, topic: str, extra: str, current: list[str]) -> list[str]:
+    """Términos que probablemente se digan en la charla y que un reconocedor podría escribir mal."""
+    from google.genai import types
+
+    prompt = (
+        "A live captioning system needs a glossary for this conference talk.\n"
+        f"Title: {name}\nSpeaker: {speaker or 'unknown'}\nTopic: {topic or 'unknown'}\n"
+        + (f"Abstract or agenda text: {extra[:4000]}\n" if extra else "")
+        + "List up to 25 terms that will probably be spoken and that a speech recognizer could misspell. "
+        "Only proper nouns: people, companies, products, projects, programming languages, acronyms and "
+        "commands, with their canonical spelling (for example Kubernetes, kubectl, PostgreSQL, ElevenLabs). "
+        "Do NOT include common words or generic concepts (latency, multilingual, fine-tuning, open source, "
+        "prompt engineering). One term per line, no numbering, no explanations.")
+    config = types.GenerateContentConfig(temperature=0.2, max_output_tokens=400)
+    _, resp = await engine._call(engine.translators, lambda m: ([prompt], config))
+    seen = {t.lower() for t in current}
+    terms = []
+    for line in (resp.text or "").splitlines():
+        term = line.strip().lstrip("-•*0123456789.) ").strip().strip('"')
+        # Una palabra común con guion ("Fine-tuning", "Zero-shot") cambiaría texto normal: afuera.
+        generic = "-" in term and term[1:] == term[1:].lower() and not any(c.isdigit() for c in term)
+        if 1 < len(term) <= 40 and term.lower() not in seen and not generic:
+            seen.add(term.lower())
+            terms.append(term)
+    return terms[:25]
+
+
 class Summarizer:
     def __init__(self):
         self.engine = None

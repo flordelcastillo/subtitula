@@ -48,6 +48,8 @@ def test_two_sessions_in_parallel(tmp_path, talk_wav):
         qr = client.get("/api/sessions/sala-1/qr.svg").text
         # Sin xmlns el navegador no lo muestra dentro de un <img> (pasó con el panel y la pantalla).
         assert qr.startswith("<svg") and 'xmlns="http://www.w3.org/2000/svg"' in qr
+        metrics = client.get("/metrics").text
+        assert '# TYPE subtitula_captions_total gauge' in metrics and 'subtitula_live{sala="sala-1"}' in metrics
         live = client.get("/api/sessions/sala-1/live.txt?lang=es&lines=2").text.splitlines()
         assert len(live) == 2 and all(line.startswith("[es]") for line in live)
 
@@ -194,6 +196,26 @@ def test_summary_is_cached_and_generated_once(tmp_path, talk_wav, monkeypatch):
         assert calls == ["es"]
         client.get("/api/sessions/sala-1/summary?lang=pt")
         assert calls == ["es", "pt"]
+
+
+def test_glossary_suggestions_need_token_and_key(tmp_path, talk_wav, monkeypatch):
+    import subtitula.hub as hubmod
+
+    async def fake_suggest(engine, name, speaker, topic, extra, current):
+        return ["ElevenLabs", "Thor Schaeff"]
+
+    monkeypatch.setattr(hubmod, "suggest_glossary", fake_suggest)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    with TestClient(make_app(tmp_path, talk_wav)) as client:
+        url = "/api/sessions/sala-1/glossary/suggest"
+        assert client.post(url, json={}).status_code == 401  # sin token de operación
+        auth = {"Authorization": "Bearer secreto"}
+        assert client.post(url, json={}, headers=auth).status_code == 503  # sin clave de Gemini
+        monkeypatch.setenv("GEMINI_API_KEY", "x")
+        monkeypatch.setattr(hubmod.Summarizer, "_engine", lambda self: None)
+        reply = client.post(url, json={"text": "charla sobre agentes de voz"}, headers=auth).json()
+        assert reply == {"suggested": ["ElevenLabs", "Thor Schaeff"]}
 
 
 def test_listen_websocket_gets_interpretation_audio(tmp_path, talk_wav):
