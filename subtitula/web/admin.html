@@ -18,6 +18,7 @@
   th, td { text-align: left; padding: .7rem .8rem; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { font-weight: 400; color: var(--muted); font-size: .9rem; background: var(--surface); }
   td.num, th.num { text-align: right; }
+  td.num { white-space: nowrap; }
   tr.alert td:first-child { box-shadow: inset 4px 0 0 var(--bad); }
   tr:last-child td { border-bottom: 0; }
   .name { font-weight: 700; }
@@ -60,7 +61,7 @@
       <tbody id="rows"></tbody>
     </table>
   </div>
-  <p class="sub">Con el motor en vivo, la demora va desde que el orador hace una pausa hasta que llega la última palabra de esa frase. Con el motor por tramos, desde que termina el tramo de audio hasta que se publica. El costo sale de los tokens que informa el modelo, con los precios de <code>SUBTITULA_PRICE_*</code>.</p>
+  <p class="sub">Con el motor en vivo, la demora va desde que el orador hace una pausa hasta que llega la última palabra de esa frase. Con el motor por tramos, desde que termina el tramo de audio hasta que se publica. El costo sale de los tokens que informa cada modelo y sus precios oficiales (<code>subtitula/pricing.py</code>).</p>
 </div>
 <div class="qr" id="qr" hidden><figure><img alt=""><figcaption></figcaption></figure></div>
 

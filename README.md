@@ -1,12 +1,33 @@
 # Subtitula
 
-Subtítulos y traducción simultánea en vivo, open source, para conferencias con muchos escenarios a la vez.
+[![tests](https://github.com/flordelcastillo/subtitula/actions/workflows/tests.yml/badge.svg)](https://github.com/flordelcastillo/subtitula/actions/workflows/tests.yml)
+[![licencia](https://img.shields.io/badge/licencia-Apache%202.0-blue)](LICENSE)
 
-Cada escenario manda su audio (stream, micrófono, encoder o una pestaña del navegador) a la [Gemini Live API](https://ai.google.dev/gemini-api/docs/live), que devuelve palabra por palabra el original y la interpretación a español, inglés y portugués, mientras la persona habla. El público escanea un QR y lee los subtítulos en el celular, en el idioma que elija. Producción suma un overlay para OBS/vMix, un panel con el estado de cada sala y la transcripción completa en SRT, VTT o texto al terminar.
+**Subtítulos e interpretación simultánea en vivo, open source, para conferencias con muchas salas a la vez.**
+*Live captions and simultaneous interpretation for multi-room conferences, open source.*
 
-Hecho para la [Vibeathon de Nerdearla 2026](https://nerdearla26.devpost.com). Licencia Apache 2.0.
+[Vibeathon de Nerdearla 2026](https://nerdearla26.devpost.com) · [Evidencia medida](docs/evidencia) · [Los cinco criterios](#los-cinco-criterios-con-evidencia) · [English summary](#english-summary)
 
-> **English summary.** Subtitula is an open source live captioning and simultaneous interpretation system for multi-track conferences. Each stage streams its audio into one Gemini Live API session per target language (`gemini-3.5-live-translate-preview`): the original transcript and the translation arrive word by word while the speaker talks, typically 0.3 to 1 s after they pause. Each language is its own caption track, split into natural sentences of at most 84 characters. Phones can also play the spoken interpretation that Live Translate already generates (headphones on, no extra cost), and a "What did I miss?" button summarizes the last 5 minutes in the reader's language with Gemma. Secondary languages open a Live session only while someone reads or listens to them, and long silences are not streamed. Measured over 10 continuous minutes per talk: 0.34 s p50 / under 0.9 s p90 from the speaker's pause to the last translated word, with no accumulated drift ([evidence](docs/evidencia)). A lightweight hub fans captions out over Server-Sent Events to phones (pick stage + language), an OBS/vMix overlay and a production dashboard (audio level, latency p50/p90, errors, live sessions, real cost per room from official prices). Transcripts export to SRT/VTT/TXT. Scale by running one worker container per stage. Fallback engines: chunked `gemini-3.5-transcribe` + Flash-Lite/Gemma translation, and fully local faster-whisper + Gemma via Ollama.
+| El público, en su idioma | "¿Qué me perdí?" | Pantalla de sala con QR | Panel de producción |
+|---|---|---|---|
+| <img src="docs/img/celular-es.png" width="180" alt="Vista del celular con la charla en inglés subtitulada al español"> | <img src="docs/img/que-me-perdi.png" width="180" alt="Resumen de los últimos 5 minutos en inglés"> | <img src="docs/img/pantalla.png" width="300" alt="Pantalla de sala con subtítulos en español e inglés y código QR"> | <img src="docs/img/panel.png" width="300" alt="Panel de producción con dos salas en vivo, demoras y costo"> |
+
+## Para Nerdearla
+
+Hoy la conferencia usa dos herramientas comerciales, una para transcribir las charlas en español y otra para traducir en vivo las de inglés, con operación manual. Este año son más de 30 sesiones en inglés, muchas en paralelo.
+
+- **Una sola herramienta para las dos cosas.** Cada sala abre una sesión de la Gemini Live API que devuelve el original (transcripción, accesibilidad) y la traducción al mismo tiempo. Sirve igual para una charla en inglés (subtítulos en español) que para una en español (subtítulos en inglés), y suma portugués si alguien lo pide.
+- **Costo del evento a la vista.** US$ 2,21 por sala y por hora con un idioma de destino, con precios oficiales. Por ejemplo, 30 charlas de 40 minutos traducidas al español son unas 20 horas, **unos US$ 44 en total**. Cada idioma adicional cuesta lo mismo, pero sólo mientras alguien lo esté usando.
+- **El mismo setup de sala.** La compu conectada a la consola abre `/enviar/<sala>` en el navegador, sin instalar nada, o se toma el stream (HLS, RTMP, SRT o YouTube). La tele de la sala abre `/pantalla/<sala>`, el stream suma `/overlay/<sala>` en OBS o vMix y producción mira todas las salas en `/admin`.
+- **Replicable.** Para otro evento (Chile, México) alcanza con editar `config/sessions.yaml` y `config/glossary.yaml`. Licencia Apache 2.0: Nerdearla lo puede usar, adaptar y desplegar.
+
+## En pocas palabras
+
+Cada escenario manda su audio (stream, micrófono, encoder o una pestaña del navegador) a la [Gemini Live API](https://ai.google.dev/gemini-api/docs/live), que devuelve palabra por palabra el original y la interpretación a español, inglés y portugués mientras la persona habla. El público escanea un QR y lee los subtítulos en el celular, en el idioma que elija, o escucha la interpretación con auriculares. Producción suma una pantalla por sala, un overlay para OBS/vMix, un panel con el estado de cada sala y la transcripción completa en SRT, VTT o texto al terminar.
+
+## English summary
+
+Subtitula is an open source live captioning and simultaneous interpretation system for multi-track conferences. Each stage streams its audio into one Gemini Live API session per target language (`gemini-3.5-live-translate-preview`): the original transcript and the translation arrive word by word while the speaker talks, typically 0.3 to 1 s after they pause. Each language is its own caption track, split into natural sentences of at most 84 characters. Phones can also play the spoken interpretation that Live Translate already generates (headphones on, no extra cost), and a "What did I miss?" button summarizes the last 5 minutes in the reader's language with Gemma. Secondary languages open a Live session only while someone reads or listens to them, and long silences are not streamed. Measured over 10 continuous minutes per talk: 0.34 s p50 / under 0.9 s p90 from the speaker's pause to the last translated word, with no accumulated drift ([evidence](docs/evidencia)). A lightweight hub fans captions out over Server-Sent Events to phones (pick stage + language), an OBS/vMix overlay and a production dashboard (audio level, latency p50/p90, errors, live sessions, real cost per room from official prices). Transcripts export to SRT/VTT/TXT. Scale by running one worker container per stage. Fallback engines: chunked `gemini-3.5-transcribe` + Flash-Lite/Gemma translation, and fully local faster-whisper + Gemma via Ollama.
 
 ## Los cinco criterios, con evidencia
 
@@ -228,7 +249,24 @@ pip install -e '.[dev]'
 pytest
 ```
 
-Los tests cubren el segmentador con audio sintético, las exportaciones, dos salas en paralelo de punta a punta, el motor en dos etapas (original primero, traducción que actualiza la misma línea), el armado de pistas del motor en vivo (cortes por oración, tope de 84 caracteres, exportación por pista, demora medida), la reconexión SSE con `Last-Event-ID`, el token de ingesta y la actualización del glosario en vivo.
+Los tests (25, en CI en cada push) cubren:
+
+- el segmentador con audio sintético y las exportaciones;
+- dos salas en paralelo de punta a punta y el motor en dos etapas;
+- las pistas del motor en vivo (cortes por oración, tope de 84 caracteres, exportación por pista, demora medida);
+- idiomas bajo demanda, pausa en silencio, voz por WebSocket y "¿Qué me perdí?";
+- la corrección de glosario y su recarga en caliente;
+- la reconexión SSE con `Last-Event-ID`, el token de ingesta y el QR.
+
+Las instrucciones para agentes de código y para contribuir están en [AGENTS.md](AGENTS.md).
+
+## Cómo se hizo
+
+Subtitula se construyó durante la vibeathon, el 24 y 25 de septiembre de 2026, con [Claude Code](https://claude.com/claude-code) como agente de programación. Florencia definió el alcance y las prioridades y tomó las decisiones de producto. El agente escribió el código, los tests y los scripts de medición. Cada decisión técnica importante salió de probar contra la API real:
+
+- pasar de un pedido por tramo a la Live API cuando la cuota y la saturación la volvieron inviable;
+- separar cada idioma en su propia pista cuando alinear la traducción con el original resultó imposible en vivo;
+- corregir el costo cuando se comparó contra los precios oficiales.
 
 ## Licencia
 
