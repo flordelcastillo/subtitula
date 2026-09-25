@@ -45,7 +45,9 @@ def test_two_sessions_in_parallel(tmp_path, talk_wav):
         srt = client.get("/api/sessions/sala-1/export.srt?lang=es")
         assert srt.status_code == 200 and "-->" in srt.text and "[es]" in srt.text
         assert client.get("/api/sessions/sala-1/export.txt?lang=pt").text.startswith("[pt]")
-        assert client.get("/api/sessions/sala-1/qr.svg").text.startswith("<svg")
+        qr = client.get("/api/sessions/sala-1/qr.svg").text
+        # Sin xmlns el navegador no lo muestra dentro de un <img> (pasó con el panel y la pantalla).
+        assert qr.startswith("<svg") and 'xmlns="http://www.w3.org/2000/svg"' in qr
         live = client.get("/api/sessions/sala-1/live.txt?lang=es&lines=2").text.splitlines()
         assert len(live) == 2 and all(line.startswith("[es]") for line in live)
 

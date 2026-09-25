@@ -7,6 +7,7 @@ escenarios y miles de personas, mientras los workers (lo caro) escalan por separ
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import logging
 import os
@@ -217,6 +218,10 @@ def create_app(config: AppConfig, token: str = "", run_workers: bool = False) ->
     async def overlay(sid: str):
         return FileResponse(WEB / "overlay.html")
 
+    @app.get("/pantalla/{sid}", include_in_schema=False)
+    async def screen(sid: str):
+        return FileResponse(WEB / "pantalla.html")
+
     @app.get("/admin", include_in_schema=False)
     async def admin():
         return FileResponse(WEB / "admin.html")
@@ -325,7 +330,11 @@ def create_app(config: AppConfig, token: str = "", run_workers: bool = False) ->
         _get(sid)
         base = os.environ.get("SUBTITULA_PUBLIC_URL", str(request.base_url)).rstrip("/")
         url = f"{base}/s/{sid}" + (f"?lang={lang}" if lang else "")
-        svg = segno.make(url, error="m").svg_inline(scale=8, border=2, dark="#0b0b0c", light="#ffffff")
+        buf = io.BytesIO()
+        # Con xmlns y sin declaración XML: así el navegador lo muestra dentro de un <img>.
+        segno.make(url, error="m").save(buf, kind="svg", scale=8, border=2, dark="#0b0b0c", light="#ffffff",
+                                        xmldecl=False)
+        svg = buf.getvalue()
         return Response(svg, media_type="image/svg+xml")
 
     # -- operación -----------------------------------------------------------------------------

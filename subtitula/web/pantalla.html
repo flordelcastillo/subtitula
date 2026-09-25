@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pantalla de sala</title>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/web/style.css">
+<!--
+  Para la tele o el proyector al costado del escenario. Parámetros:
+    lang=es        idioma principal (grande)
+    lang2=en       segundo idioma, más chico debajo (opcional)
+-->
+<style>
+  html, body { height: 100%; overflow: hidden; }
+  body { display: grid; grid-template-rows: auto 1fr auto; padding: 3vh 4vw; gap: 2vh; }
+  header { display: flex; justify-content: space-between; align-items: baseline; gap: 2vw; color: var(--muted); font-size: 2.2vh; }
+  header strong { color: var(--fg); font-size: 3vh; }
+  main { display: flex; flex-direction: column; justify-content: flex-end; gap: 3vh; min-height: 0; }
+  .lane { overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; }
+  .lane p { margin: 0 0 .4em; line-height: 1.25; opacity: .45; }
+  .lane p:last-child { opacity: 1; }
+  .main-lane { font-size: 5.4vh; font-weight: 700; max-height: 50vh; }
+  .main-lane p:last-child { border-left: .5vw solid var(--stage); padding-left: .8vw; margin-left: -1.3vw; }
+  .second-lane { font-size: 3.2vh; color: var(--muted); max-height: 20vh; }
+  .second-lane p:last-child { color: var(--fg); }
+  footer { display: flex; align-items: center; gap: 2vw; }
+  footer img { height: 17vh; width: 17vh; background: #fff; border-radius: 1vh; padding: .6vh; }
+  footer .how { font-size: 2.8vh; line-height: 1.3; }
+  footer .how b { color: var(--stage); }
+  .empty { color: var(--muted); font-size: 3.2vh; }
+</style>
+</head>
+<body>
+<header><strong id="name">Sala</strong><span id="speaker"></span></header>
+<main>
+  <div class="lane main-lane" id="main" aria-live="polite"><p class="empty">Los subtítulos aparecen acá apenas empiece la charla.</p></div>
+  <div class="lane second-lane" id="second" hidden></div>
+</main>
+<footer>
+  <img id="qr" alt="Código QR para leer los subtítulos en el celular">
+  <div class="how">Leé o <b>escuchá</b> esta charla en tu idioma desde el celular.<br><span id="url"></span></div>
+</footer>
+<script>
+  const q = new URLSearchParams(location.search);
+  const sid = decodeURIComponent(location.pathname.split("/").pop());
+  const lang = q.get("lang") || "es", lang2 = q.get("lang2") || "";
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  document.getElementById("qr").src = `/api/sessions/${encodeURIComponent(sid)}/qr.svg`;
+  document.getElementById("url").textContent = `${location.host}/s/${sid}`;
+  const visible = (c, l) => !c.track || (l === "original" ? c.original : c.track === l);
+  const textOf = (c, l) => (c.track || l === "original" || l === c.lang ? c.text : (c.tr?.[l] || c.text));
+  const lanes = { [lang]: document.getElementById("main") };
+  if (lang2) { lanes[lang2] = document.getElementById("second"); lanes[lang2].hidden = false; }
+  const lines = { [lang]: [], [lang2]: [] };
+
+  function render(l) {
+    const keep = l === lang ? 3 : 2;
+    lines[l] = lines[l].slice(-keep);
+    lanes[l].innerHTML = lines[l].map((x) => `<p>${esc(x.text)}</p>`).join("");
+  }
+  function add(c) {
+    for (const l of Object.keys(lanes)) {
+      if (!visible(c, l)) continue;
+      const text = textOf(c, l);
+      if (!text) continue;
+      const found = lines[l].find((x) => x.seq === c.seq);
+      if (found) found.text = text; else lines[l].push({ seq: c.seq, text });
+      render(l);
+    }
+  }
+  fetch("/api/sessions").then((r) => r.json()).then((d) => {
+    const s = d.sessions.find((x) => x.id === sid);
+    if (s) { document.getElementById("name").textContent = s.name; document.getElementById("speaker").textContent = s.speaker || ""; }
+  });
+  // Avisa qué idiomas muestra: con idiomas bajo demanda, sus sesiones quedan abiertas.
+  const ping = () => [lang, lang2].filter(Boolean).forEach((l) =>
+    fetch(`/api/sessions?watching=${encodeURIComponent(sid)}&lang=${encodeURIComponent(l)}`).catch(() => {}));
+  ping();
+  setInterval(ping, 20000);
+  const es = new EventSource(`/api/sessions/${encodeURIComponent(sid)}/stream`);
+  es.onmessage = (e) => add(JSON.parse(e.data));
+</script>
+</body>
+</html>

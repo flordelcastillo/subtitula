@@ -84,6 +84,7 @@
     const links = [
       `<a href="/s/${id}" target="_blank">Ver</a>`,
       `<a href="/overlay/${id}?lang=es" target="_blank">Overlay OBS</a>`,
+      `<a href="/pantalla/${id}?lang=es&lang2=en" target="_blank">Pantalla</a>`,
       `<a href="#" data-qr="${esc(s.id)}" data-name="${esc(s.name)}">QR</a>`,
       `<a href="/api/sessions/${id}/export.srt?lang=es">SRT</a>`,
       s.source === "browser" ? `<a href="/enviar/${id}" target="_blank">Enviar audio</a>` : "",

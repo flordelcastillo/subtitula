@@ -49,6 +49,7 @@ Abrí <http://localhost:8000>. Hay dos salas de ejemplo, en loop, con fragmentos
 |---|---|
 | `/` y `/s/<sala>?lang=es` | Público: elige sala e idioma, lee los subtítulos, **escucha la interpretación** con auriculares, pide **"¿Qué me perdí?"**, cambia el tamaño de letra y el tema, y descarga la charla |
 | `/overlay/<sala>?lang=es` | Fuente de navegador en OBS o vMix (fondo transparente, o `&bg=00b140` para croma) |
+| `/pantalla/<sala>?lang=es&lang2=en` | Tele o proyector al costado del escenario: subtítulos grandes en uno o dos idiomas y el QR para seguirlos en el celular |
 | `/api/sessions/<sala>/live.txt?lang=es` | Las últimas dos líneas en texto plano, como fuente de datos de un título de vMix o CasparCG |
 | `/admin` | Producción: estado, audio, latencia, errores, público, costo, QR y glosario por sala |
 | `/enviar/<sala>` | La compu de la sala manda el audio desde el navegador |
