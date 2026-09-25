@@ -136,6 +136,13 @@ def test_glossary_fixer_canonical_spelling():
     assert g.fix("thor schaeff habla de rag") == "Thor Schaeff habla de RAG"
     assert g.fix("Open Source es genial") == "Open source es genial"  # conserva la mayúscula inicial
     assert g.fix("drag and drop, el llamado") == "drag and drop, el llamado"  # sin falsos positivos
+    # Números en letras o en dígitos, y alias explícitos con "=".
+    assert g.fix("How many 11 labs engineers, eleven labs, Eleven-Labs?") == "How many ElevenLabs engineers, ElevenLabs, ElevenLabs?"
+    g2 = GlossaryFixer(["ElevenLabs = Eleven Laps, 11 laps", "Gemini 3.5 = Gemini tres punto cinco"])
+    assert g2.fix("eleven laps y 11 laps con gemini tres punto cinco") == "ElevenLabs y ElevenLabs con Gemini 3.5"
+    from subtitula.glossary import canonical_terms
+
+    assert canonical_terms(["ElevenLabs = 11 labs", "Nerdearla"]) == ["ElevenLabs", "Nerdearla"]
 
 
 async def test_live_tracks_apply_glossary_and_hot_reload():

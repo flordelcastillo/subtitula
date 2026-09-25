@@ -23,6 +23,7 @@ from google.genai import types
 
 from .captions import Caption
 from .engines import Engine, EngineContext
+from .glossary import canonical_terms
 from .worker import SessionWorker
 
 log = logging.getLogger(__name__)
@@ -90,7 +91,7 @@ class LiveTrack:
     def _config(self) -> types.LiveConnectConfig:
         session = self.worker.session
         asr = types.AudioTranscriptionConfig(
-            custom_vocabulary=self.worker.glossary[:100] or None,
+            custom_vocabulary=canonical_terms(self.worker.glossary)[:100] or None,
             language_codes=[session.language] if session.language not in ("", "auto") else None,
         )
         return types.LiveConnectConfig(

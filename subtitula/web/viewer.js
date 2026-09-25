@@ -87,7 +87,7 @@
       const canListen = speechLangs.includes(lang);
       $("#listen").hidden = !canListen;
       $("#listen").setAttribute("aria-pressed", String(player.on));
-      $("#listen").textContent = player.on ? t("listening") : t("listen");
+      $("#listen").textContent = player.on ? t("listening") : t("listen.in", { lang: langName[lang] || lang });
       if (player.on && (!canListen || player.lang !== lang)) {
         player.stop();
         if (canListen) player.start(sid, lang).catch(() => {});
@@ -239,7 +239,13 @@
       }
       if (!visible(c)) return;
       const node = main.querySelector(`.cap[data-seq="${c.seq}"]`);
-      if (node) { paint(node, c); return; }
+      if (node) {
+        // La línea crece palabra por palabra: si se estaba siguiendo el vivo, queda a la vista.
+        const stick = following();
+        paint(node, c);
+        if (stick) scrollToEnd();
+        return;
+      }
       const stick = following();
       main.querySelector(".waiting")?.remove();
       const p = document.createElement("p");
@@ -275,9 +281,18 @@
         recapBody.innerHTML = `<p class="meta">${esc(t("recap.error", { err: err.message }))}</p>`;
       }
     }
-    $("#recap").addEventListener("click", () => (recap.hidden ? openRecap() : (recap.hidden = true)));
-    $("#recap-close").addEventListener("click", () => { recap.hidden = true; });
+    // El foco entra al panel al abrirlo y vuelve al botón al cerrarlo; Escape también lo cierra.
+    const closeRecap = () => { recap.hidden = true; $("#recap").focus(); };
+    $("#recap").addEventListener("click", () => { if (recap.hidden) { openRecap(); $("#recap-close").focus(); } else closeRecap(); });
+    $("#recap-close").addEventListener("click", closeRecap);
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !recap.hidden) closeRecap(); });
     window.addEventListener("scroll", () => { if (following()) $("#jump").hidden = true; }, { passive: true });
+
+    // El pie ocupa una o dos filas según el idioma: los subtítulos dejan siempre ese espacio libre.
+    const foot = $("footer.foot");
+    const reserve = () => document.documentElement.style.setProperty("--foot-h", `${foot.offsetHeight}px`);
+    new ResizeObserver(reserve).observe(foot);
+    reserve();
 
     // Conexión
     const conn = $("#conn"), connText = $("#conn-text");

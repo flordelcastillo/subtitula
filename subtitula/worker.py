@@ -16,7 +16,7 @@ from .audio import QueueSource, ffmpeg_pcm, is_live
 from .captions import Caption
 from .config import SessionConfig
 from .engines import Engine, EngineContext
-from .glossary import GlossaryFixer
+from .glossary import GlossaryFixer, canonical_terms
 from .pricing import cost_usd
 from .segmenter import Segment, Segmenter, SegmenterConfig, frame_dbfs
 
@@ -182,7 +182,7 @@ class SessionWorker:
     def _context(self) -> EngineContext:
         s = self.session
         return EngineContext(session_name=s.name, languages=self.languages, source_language=s.language,
-                             glossary=self.glossary, speaker=s.speaker, topic=s.topic,
+                             glossary=canonical_terms(self.glossary), speaker=s.speaker, topic=s.topic,
                              previous=list(self.previous))
 
     async def _retrying(self, call, what: str):

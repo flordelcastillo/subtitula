@@ -28,16 +28,16 @@
   header.bar { position: sticky; top: 0; z-index: 2; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px);
     border-bottom: 1px solid var(--line); padding: .6rem 1rem; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
   .title { display: flex; align-items: center; gap: .6rem; min-width: 0; flex: 1 1 14rem; }
-  .title .listen { margin-left: auto; flex: none; }
-  .title .listen[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
-  @media (max-width: 40rem) { .foot .status span:last-child { display: none; } }
+  .foot .listen[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+  .foot { flex-wrap: wrap; }
+  .foot .status { font-size: .85rem; }
   .title a { text-decoration: none; color: var(--muted); font-size: .95rem; }
   .title strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .langs { display: flex; gap: .35rem; overflow-x: auto; scrollbar-width: none; max-width: 100%; padding: 2px; }
   .langs::-webkit-scrollbar { display: none; }
   .tools { display: flex; gap: .35rem; align-items: center; }
 
-  main.captions { flex: 1; width: 100%; max-width: 52rem; margin: 0 auto; padding: 1.5rem 1rem 7rem;
+  main.captions { flex: 1; width: 100%; max-width: 52rem; margin: 0 auto; padding: 1.5rem 1rem calc(var(--foot-h, 6rem) + 1.5rem);
     display: flex; flex-direction: column; justify-content: flex-end; }
   .cap { font-size: var(--cap-size); line-height: 1.32; margin: 0 0 .55em; opacity: .5; transition: opacity .4s ease;
     overflow-wrap: anywhere; }
@@ -57,8 +57,8 @@
   details.dl summary::-webkit-details-marker { display: none; }
   details.dl .menu { position: absolute; right: 0; bottom: 2.6rem; background: var(--surface); border: 1px solid var(--line); border-radius: .75rem;
     padding: .4rem; display: grid; min-width: 13rem; }
-  details.dl .menu a, details.dl .menu .menu-item { padding: .45rem .7rem; border-radius: .5rem; text-decoration: none;
-    display: block; text-align: left; background: none; border: 0; cursor: pointer; width: 100%; }
+  details.dl .menu a, details.dl .menu .menu-item { padding: .6rem .7rem; min-height: 44px; border-radius: .5rem; text-decoration: none;
+    display: flex; align-items: center; text-align: left; background: none; border: 0; cursor: pointer; width: 100%; }
   details.dl .menu a:hover, details.dl .menu .menu-item:hover { background: var(--bg); }
   details.dl .files, details.dl .ui-langs { border-top: 1px solid var(--line); margin-top: .3rem; padding-top: .3rem; }
   details.dl .ui-langs .menu-item[aria-pressed="true"] { font-weight: 700; }
@@ -89,10 +89,10 @@
 
 <template id="t-view">
   <header class="bar">
-    <div class="title"><a href="/" data-i18n="rooms" data-i18n-attr="aria-label:rooms.back">Salas</a><strong class="name"></strong><button class="btn primary listen" id="listen" hidden aria-pressed="false" data-i18n-attr="title:listen.title">Escuchar</button></div>
+    <div class="title"><a href="/" data-i18n="rooms" data-i18n-attr="aria-label:rooms.back">Salas</a><strong class="name"></strong></div>
     <div class="langs" role="group" data-i18n-attr="aria-label:langs.label"></div>
   </header>
-  <main class="captions" aria-live="polite" aria-relevant="additions">
+  <main class="captions">
     <p class="waiting" data-i18n="waiting.start">Esperando que arranque la charla. Los subtítulos aparecen acá apenas alguien habla.</p>
   </main>
   <section class="recap" id="recap-panel" hidden aria-live="polite" aria-labelledby="recap-title">
@@ -103,15 +103,16 @@
     <div class="recap-body"></div>
   </section>
   <footer class="foot">
-    <div class="status"><span class="dot" id="conn"></span><span id="conn-text" data-i18n="conn.connecting">Conectando</span></div>
+    <div class="status" role="status"><span class="dot" id="conn" aria-hidden="true"></span><span id="conn-text" data-i18n="conn.connecting">Conectando</span></div>
+    <button class="btn primary listen" id="listen" hidden aria-pressed="false" data-i18n-attr="title:listen.title">Escuchar</button>
     <button class="btn" id="recap" data-i18n="recap.btn">¿Qué me perdí?</button>
     <button class="btn primary" id="jump" hidden data-i18n="jump">Volver al vivo</button>
     <div class="tools">
-      <button class="btn" data-size="-1" data-i18n-attr="aria-label:size.smaller">A−</button>
-      <button class="btn" data-size="1" data-i18n-attr="aria-label:size.bigger">A+</button>
       <details class="dl">
         <summary class="btn" data-i18n="more">Más</summary>
         <div class="menu">
+          <button class="menu-item" data-size="1" data-i18n="size.bigger">Texto más grande</button>
+          <button class="menu-item" data-size="-1" data-i18n="size.smaller">Texto más chico</button>
           <button class="menu-item" id="theme">Tema claro</button>
           <div class="ui-langs"></div>
           <div class="files"></div>

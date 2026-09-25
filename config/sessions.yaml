@@ -15,7 +15,8 @@ sessions:
     source: samples/thor-schaeff-multilingual-agents-en.mp3
     language: en
     loop: true
-    glossary: [ElevenLabs, Thor Schaeff, Gemini]
+    # "Término = alias, alias": las formas que suele escribir el reconocedor se corrigen a la canónica.
+    glossary: ["ElevenLabs = 11 labs, Eleven Laps", Thor Schaeff, Gemini]
 
   - id: sala-b
     name: "Programming is dead. Long live programming!"

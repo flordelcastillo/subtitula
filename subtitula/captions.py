@@ -58,8 +58,25 @@ def _wrap(text: str, width: int = 42) -> str:
     return "\n".join(textwrap.wrap(text, width=width)) or text
 
 
+MIN_CUE_S = 0.8
+
+
 def _visible(captions: list[Caption], lang: str) -> list[Caption]:
-    return [c for c in captions if c.visible_in(lang)]
+    """Las líneas de la pista pedida, con una duración mínima legible.
+
+    En el motor en vivo una oración puede terminar en medio de un fragmento y la línea siguiente
+    nace y muere en el mismo instante; un cue de 0 s no se ve en ningún reproductor."""
+    shown = [c for c in captions if c.visible_in(lang)]
+    fixed: list[Caption] = []
+    for i, c in enumerate(shown):
+        end = max(c.end, c.start + MIN_CUE_S)
+        nxt = shown[i + 1].start if i + 1 < len(shown) else None
+        if nxt is not None and nxt > c.start:
+            end = min(end, max(nxt, c.start + MIN_CUE_S)) if nxt - c.start < MIN_CUE_S else min(end, nxt)
+        if end != c.end:
+            c = Caption.from_dict({**c.to_dict(), "end": round(end, 3)})
+        fixed.append(c)
+    return fixed
 
 
 def to_srt(captions: list[Caption], lang: str = "original") -> str:
