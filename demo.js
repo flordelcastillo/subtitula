@@ -32,8 +32,8 @@
     $("voice").textContent = voice ? t("demo.voicing") : t("demo.voice");
     const s = d.stats, ms = (v) => (v == null ? "–" : `${(v / 1000).toFixed(2)} s`);
     $("stats").innerHTML = `<span>${esc(d.name)}</span><span>${esc(t("demo.recorded", { date: d.recorded_at }))} <code>${esc(d.model)}</code></span>`
-      + `<span>${esc(t("demo.lat", { o: ms(s.latency_p50_ms), t: ms(s.translation_p50_ms) }))}</span>`
-      + `<span>${esc(t("demo.errors", { n: s.errors }))}</span>`;
+      + `<span>${esc(t("demo.lat", { o: ms(s.latency_p50_ms), o90: ms(s.latency_p90_ms), t: ms(s.translation_p50_ms), t90: ms(s.translation_p90_ms) }))}</span>`
+      + `<span>${esc(t("demo.errors", { n: s.errors }))}</span><span>${esc(t("demo.note"))}</span>`;
   }
 
   function source() {
