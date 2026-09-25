@@ -4,7 +4,7 @@ Subtítulos y traducción simultánea en vivo, open source, para conferencias co
 
 Cada escenario manda su audio (stream, micrófono, encoder o una pestaña del navegador) a la [Gemini Live API](https://ai.google.dev/gemini-api/docs/live), que devuelve palabra por palabra el original y la interpretación a español, inglés y portugués, mientras la persona habla. El público escanea un QR y lee los subtítulos en el celular, en el idioma que elija. Producción suma un overlay para OBS/vMix, un panel con el estado de cada sala y la transcripción completa en SRT, VTT o texto al terminar.
 
-Hecho para la [Vibeathon de Nerdearla 2026](https://nerdearla.devpost.com). Licencia Apache 2.0.
+Hecho para la [Vibeathon de Nerdearla 2026](https://nerdearla26.devpost.com). Licencia Apache 2.0.
 
 > **English summary.** Subtitula is an open source live captioning and simultaneous interpretation system for multi-track conferences. Each stage streams its audio into one Gemini Live API session per target language (`gemini-3.5-live-translate-preview`): the original transcript and the translation arrive word by word while the speaker talks, typically 0.3 to 1 s after they pause. Each language is its own caption track, split into natural sentences of at most 84 characters. Phones can also play the spoken interpretation that Live Translate already generates (headphones on, no extra cost), and a "What did I miss?" button summarizes the last 5 minutes in the reader's language with Gemma. Secondary languages open a Live session only while someone reads or listens to them, and long silences are not streamed. Measured over 10 continuous minutes per talk: 0.34 s p50 / under 0.9 s p90 from the speaker's pause to the last translated word, with no accumulated drift ([evidence](docs/evidencia)). A lightweight hub fans captions out over Server-Sent Events to phones (pick stage + language), an OBS/vMix overlay and a production dashboard (audio level, latency p50/p90, errors, live sessions, real cost per room from official prices). Transcripts export to SRT/VTT/TXT. Scale by running one worker container per stage. Fallback engines: chunked `gemini-3.5-transcribe` + Flash-Lite/Gemma translation, and fully local faster-whisper + Gemma via Ollama.
 
@@ -14,7 +14,7 @@ Hecho para la [Vibeathon de Nerdearla 2026](https://nerdearla.devpost.com). Lice
 |---|---|---|
 | **Calidad** | Interpretación con Live Translate. El glosario de cada sala entra como vocabulario del reconocedor y, además, corrige la ortografía de nombres y términos en todas las pistas, incluida la traducción. Cada idioma arma sus propias líneas, cortadas por oración y con 84 caracteres como máximo (dos renglones de 42, la norma de subtitulado). Las preguntas del público en el idioma de destino se muestran tal cual | Ejemplo real: "if I pipe the audio out on the HDMI, are you able to hear it on the stream?" → "Si saco el audio por el HDMI, ¿puedes escucharlo en la transmisión?". Tests de glosario y de pistas en `tests/test_live.py` |
 | **Latencia** | El texto llega palabra por palabra mientras la persona habla. Desde que el orador hace una pausa hasta que llega la última palabra de la frase: **0,34 s en p50 y 0,7 a 0,9 s en p90 para el original, y 0,29 a 0,34 s en p50 y 0,76 a 0,89 s en p90 para la traducción**. En 10 minutos seguidos no hay atraso acumulado (el peor minuto dio 2,1 s de p90) | [`docs/evidencia/`](docs/evidencia), medido con [`scripts/drift_test.py`](scripts/drift_test.py) sobre 10 minutos de cada charla de ejemplo |
-| **Escalabilidad** | Un worker por sala sin estado compartido y un hub que sólo mueve texto. Los idiomas sin público no abren sesión y el audio en silencio no se manda. Costo real por sala en el panel | 4 sesiones Live simultáneas contra Gemini con 0 errores. Prueba de carga: 20 salas y 500 personas, 6 ms p50 del hub a la pantalla ([Escala](#escala)). US$ 2,2 por idioma y por hora ([Costos](#costos)) |
+| **Escalabilidad** | Un worker por sala sin estado compartido y un hub que sólo mueve texto. Los idiomas sin público no abren sesión y el audio en silencio no se manda. Costo real por sala en el panel | 4 sesiones Live simultáneas contra Gemini con 0 errores. Prueba de carga palabra por palabra: 20 salas y 500 personas, 4.179 entregas por segundo, 7 ms p50 del hub a la pantalla ([Escala](#escala)). US$ 2,2 por idioma y por hora ([Costos](#costos)) |
 | **Despliegue y operación** | `pip install`, una clave en `.env` y `subtitula serve`, o Docker Compose con un contenedor por sala. La sala puede mandar el audio desde un navegador, sin instalar nada. Panel con vúmetro, demoras p50/p90, errores, sesiones, costo, QR y glosario editable en vivo. Overlay para OBS/vMix, `live.txt` para títulos y fondo de croma | Secciones [Operación](#operación-durante-el-evento) y [Qué pasa si…](#qué-pasa-si) |
 | **Innovación** | **Escuchar la interpretación** con auriculares desde el celular (la voz que Live Translate ya genera). **"¿Qué me perdí?"**: resumen de los últimos 5 minutos en tu idioma, con Gemma. Idiomas bajo demanda. Tres motores: en vivo, por tramos y 100% local con faster-whisper y Gemma | Capturas y video demo |
 
@@ -41,7 +41,7 @@ echo GEMINI_API_KEY=tu-clave > .env
 subtitula serve
 ```
 
-El motor por defecto (`gemini-live`) mantiene una sesión abierta por sala e idioma y no hace un pedido por frase, así que no choca con el límite de pedidos por minuto. En las pruebas, dos salas con dos idiomas cada una (4 sesiones) anduvieron con una clave común. Para un evento con muchas salas conviene activar la facturación del proyecto en AI Studio: sube el límite de sesiones simultáneas. El costo de cada sala se ve en `/admin` (ver [Costos](#costos)).
+El motor por defecto (`gemini-live`) mantiene una sesión abierta por sala e idioma y no hace un pedido por frase, así que no choca con el límite de pedidos por minuto. Live Translate no tiene plan gratuito: hace falta un proyecto con facturación activa en AI Studio. Las pruebas de este README se hicieron así, con 4 sesiones simultáneas y 0 errores. Según la [guía de Google para traducir transmisiones con Live Translate](https://github.com/google-gemini/gemini-live-translate-livekit), el nivel inicial admite pocas conexiones simultáneas y un evento con varias salas e idiomas necesita subir de tier; con idiomas bajo demanda se abren sólo las sesiones que alguien usa. Sin clave se puede probar todo con `--engine fake`, y con la clave gratuita anda el motor por tramos (`--engine gemini`). El costo de cada sala se ve en `/admin` (ver [Costos](#costos)).
 
 Abrí <http://localhost:8000>. Hay dos salas de ejemplo, en loop, con fragmentos reales de Nerdearla 2025: una charla en inglés ([Thor Schaeff, *Building Multilingual Conversational AI Agents*](https://www.youtube.com/watch?v=GkVjMxYi5gA)) y otra en español ([Miguel Ángel Durán, *Programming is dead. Long live programming!*](https://www.youtube.com/watch?v=zynI57qVj-U)).
 
@@ -133,7 +133,7 @@ Se procesan hasta 3 tramos en paralelo y se publican siempre en orden. Si el mod
 
 ```bash
 pip install -e '.[local]'
-ollama pull gemma3:4b
+ollama pull gemma4:e4b
 OLLAMA_URL=http://localhost:11434 subtitula serve --engine local
 ```
 
@@ -200,15 +200,15 @@ cp .env.example .env   # completar GEMINI_API_KEY y SUBTITULA_TOKEN
 docker compose up --build
 ```
 
-Prueba de carga incluida, que no gasta API porque usa el motor de prueba con la misma forma de tráfico que Gemini:
+Prueba de carga incluida, que no gasta API:
 
 ```bash
-python scripts/loadtest.py --stages 20 --viewers 25 --seconds 45
+python scripts/loadtest.py --mode live --stages 20 --viewers 25 --seconds 45
 ```
 
-Resultado en una notebook de 8 núcleos: 20 salas y 500 personas conectadas, 6.375 entregas sin tramos salteados ni errores. La entrega hub → pantalla fue de 6 ms en p50 y 18 ms en p99, con el 27% de un núcleo, todo en un solo proceso.
+El modo `live` imita al motor en vivo: tres pistas por sala (original y dos traducciones) cuyas líneas crecen de a un grupo de palabras cada 0,35 s, que es el tráfico más exigente. Resultado en una notebook de 8 núcleos, todo en un solo proceso: **20 salas y 500 personas conectadas, 168 actualizaciones por segundo y 188.050 entregas (4.179 por segundo) sin errores; del hub a la pantalla, 7 ms en p50 y 112 ms en p99**, con el 65% de un núcleo contando a los 500 clientes de prueba. Con `--mode chunks` (un subtítulo completo cada ~3 s, como el motor por tramos) dio 6 ms en p50 y 18 ms en p99.
 
-Cuánto cuesta: Gemini cuenta el audio a 32 tokens por segundo, unos 115 mil tokens por hora de charla, más el texto del prompt y la respuesta. El panel muestra el costo real de cada sala a partir de los tokens que informa la API, así que no hace falta estimarlo.
+Cuánto cuesta: Live Translate cuenta el audio a 25 tokens por segundo, de entrada y de salida (US$ 2,21 por sesión y por hora; ver [Costos](#costos)). El panel muestra el costo real de cada sala a partir de los tokens que informa la API y los precios oficiales de cada modelo. En las pruebas de 10 minutos se midieron US$ 0,37 por sesión, que coincide con el precio publicado.
 
 Para más de 20 o 30 salas o miles de personas: varios workers por máquina, el hub detrás de un proxy con `proxy_buffering off` para SSE, y un CDN delante de las páginas estáticas.
 

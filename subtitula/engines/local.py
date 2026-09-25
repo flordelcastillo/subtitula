@@ -31,7 +31,7 @@ class LocalEngine(Engine):
         compute = os.environ.get("SUBTITULA_WHISPER_COMPUTE", "int8")
         self.whisper = WhisperModel(model, device=device, compute_type=compute)
         self.ollama_url = os.environ.get("OLLAMA_URL", "").rstrip("/")
-        self.ollama_model = os.environ.get("SUBTITULA_OLLAMA_MODEL", "gemma3:4b")
+        self.ollama_model = os.environ.get("SUBTITULA_OLLAMA_MODEL", "gemma4:e4b")
         # Whisper no es thread-safe para llamadas simultáneas sobre el mismo modelo en CPU.
         self.pool = ThreadPoolExecutor(max_workers=1)
         self.http = httpx.AsyncClient(timeout=20)
