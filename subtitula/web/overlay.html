@@ -12,6 +12,7 @@
     hide=8                   segundos sin habla hasta ocultar el subtítulo (0 = nunca)
     pos=bottom|top           ubicación
     box=0                    sin caja de fondo (sólo contorno)
+    bg=00b140                fondo de croma, para mezcladores que no aceptan transparencia
 -->
 <style>
   html, body { margin: 0; background: transparent; overflow: hidden; }
@@ -35,6 +36,8 @@
   document.body.style.setProperty("--size", `${parseInt(q.get("size") || "44", 10)}px`);
   if (q.get("pos") === "top") document.body.style.setProperty("--justify", "flex-start");
   if (q.get("box") === "0") document.body.classList.add("nobox");
+  // Fondo de croma para mezcladores sin transparencia (ej. bg=00b140).
+  if (/^[0-9a-f]{6}$/i.test(q.get("bg") || "")) document.documentElement.style.background = document.body.style.background = `#${q.get("bg")}`;
 
   const cc = document.getElementById("cc"), line = cc.querySelector(".line");
   let recent = [], timer;  // [{seq, text}] de las líneas en pantalla

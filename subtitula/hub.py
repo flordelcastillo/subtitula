@@ -289,6 +289,13 @@ def create_app(config: AppConfig, token: str = "", run_workers: bool = False) ->
         return StreamingResponse(events(), media_type="text/event-stream", headers={
             "Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
+    @app.get("/api/sessions/{sid}/live.txt")
+    async def live_txt(sid: str, lang: str = "es", lines: int = 2):
+        """Últimas líneas en texto plano: fuente de datos para títulos de vMix o CasparCG."""
+        visible = [c for c in _get(sid)[-200:] if c.visible_in(lang) and c.in_lang(lang).strip()]
+        text = "\n".join(c.in_lang(lang).strip() for c in visible[-max(1, min(lines, 5)):])
+        return PlainTextResponse(text, headers={"Cache-Control": "no-store"})
+
     @app.get("/api/sessions/{sid}/summary")
     async def summary(sid: str, lang: str = "es", minutes: int = 5):
         """"¿Qué me perdí?": resumen de los últimos minutos en el idioma pedido."""

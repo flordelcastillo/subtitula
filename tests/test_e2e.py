@@ -46,6 +46,8 @@ def test_two_sessions_in_parallel(tmp_path, talk_wav):
         assert srt.status_code == 200 and "-->" in srt.text and "[es]" in srt.text
         assert client.get("/api/sessions/sala-1/export.txt?lang=pt").text.startswith("[pt]")
         assert client.get("/api/sessions/sala-1/qr.svg").text.startswith("<svg")
+        live = client.get("/api/sessions/sala-1/live.txt?lang=es&lines=2").text.splitlines()
+        assert len(live) == 2 and all(line.startswith("[es]") for line in live)
 
         status = client.get("/api/status").json()
         row = next(r for r in status["sessions"] if r["id"] == "sala-1")
